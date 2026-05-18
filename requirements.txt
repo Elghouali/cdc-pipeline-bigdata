@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+aiokafka
+asyncpg
+PyJWT
+passlib[bcrypt]
+python-multipart

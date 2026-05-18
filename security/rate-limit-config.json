@@ -1,0 +1,14 @@
+{
+  "_comment": "Documentation only. The live rate limiting is enforced by api/middleware/rate_limit.py (SlowAPI) inside the FastAPI service. Keep this file in sync with that middleware.",
+  "key": "client IP address",
+  "endpoints": {
+    "/api/query": {"requests_per_minute": 30, "burst": 5},
+    "/auth/login": {"requests_per_minute": 10, "burst": 2},
+    "/api/events/stream": {"requests_per_minute": 5, "burst": 1},
+    "default": {"requests_per_minute": 100, "burst": 20}
+  },
+  "response_on_exceed": {
+    "status": 429,
+    "body": {"detail": "Rate limit exceeded. Retry after {X} seconds."}
+  }
+}

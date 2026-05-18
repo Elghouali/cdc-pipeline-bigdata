@@ -1,0 +1,63 @@
+{
+  "_comment": "Trino file-based access control. Mounted at /etc/trino/access-control.json and referenced by config/trino/config.properties via access-control.config-file.",
+  "catalogs": [
+    {
+      "user": ".*",
+      "catalog": "iceberg",
+      "allow": "all"
+    },
+    {
+      "user": ".*",
+      "catalog": "system",
+      "allow": "read-only"
+    },
+    {
+      "user": ".*",
+      "catalog": "mariadb",
+      "allow": "none"
+    },
+    {
+      "user": ".*",
+      "catalog": ".*",
+      "allow": "read-only"
+    }
+  ],
+  "schemas": [
+    {
+      "user": ".*",
+      "catalog": "iceberg",
+      "schema": ".*",
+      "owner": false
+    }
+  ],
+  "tables": [
+    {
+      "catalog": "iceberg",
+      "schema": "default",
+      "table": "silver_customers",
+      "privileges": ["SELECT"],
+      "columns": [
+        {
+          "name": "email",
+          "mask": "'***@***.***'"
+        },
+        {
+          "name": "name",
+          "mask": "CONCAT(SUBSTR(name, 1, 1), '***')"
+        }
+      ]
+    },
+    {
+      "catalog": "iceberg",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT", "SHOW_STATS"]
+    },
+    {
+      "catalog": "system",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    }
+  ]
+}

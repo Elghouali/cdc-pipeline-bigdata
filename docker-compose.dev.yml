@@ -1,0 +1,47 @@
+# Development override — use via: make dev
+# Merges with docker-compose.yml via:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Changes vs production:
+#   - Spark worker reduced memory for dev laptops
+#   - Restart-on-failure for streaming services
+#   - API and frontend mounts pre-wired for Phase 2/3 (uncomment when ready)
+
+version: "3.8"
+
+services:
+
+  spark-master:
+    restart: on-failure
+    environment:
+      SPARK_LOG_LEVEL: INFO
+
+  spark-worker:
+    restart: on-failure
+    environment:
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
+      SPARK_LOG_LEVEL: INFO
+
+  kafka-connect:
+    restart: on-failure
+
+  # ── API service (Phase 2) ────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      target: dev
+    volumes:
+      - ./api:/app
+    environment:
+      RELOAD: "true"
+
+  # ── Frontend dev server (Phase 3 — uncomment when frontend/ exists) ──────────
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     target: dev
+  #   volumes:
+  #     - ./frontend/src:/app/src
+  #   ports:
+  #     - "3000:3000"

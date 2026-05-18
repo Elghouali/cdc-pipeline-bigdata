@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master
+  labels:
+    app.kubernetes.io/name: spark-master
+    app.kubernetes.io/component: compute
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-master
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spark-master
+        app.kubernetes.io/component: compute
+    spec:
+      containers:
+        - name: spark-master
+          image: bitnami/spark:3.5
+          env:
+            - name: SPARK_MODE
+              value: master
+            - name: SPARK_MASTER_OPTS
+              value: "-Dspark.deploy.defaultCores=4"
+          ports:
+            - name: cluster
+              containerPort: 7077
+            - name: ui
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 7077
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  labels:
+    app.kubernetes.io/name: spark-master
+    app.kubernetes.io/component: compute
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spark-master
+  ports:
+    - name: cluster
+      port: 7077
+      targetPort: cluster
+    - name: ui
+      port: 8085
+      targetPort: ui
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker
+  labels:
+    app.kubernetes.io/name: spark-worker
+    app.kubernetes.io/component: compute
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spark-worker
+        app.kubernetes.io/component: compute
+    spec:
+      initContainers:
+        - name: wait-for-master
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until nc -z spark-master 7077; do echo waiting for spark-master; sleep 3; done
+      containers:
+        - name: spark-worker
+          image: bitnami/spark:3.5
+          env:
+            - name: SPARK_MODE
+              value: worker
+            - name: SPARK_MASTER_URL
+              value: "spark://spark-master:7077"
+            - name: SPARK_WORKER_MEMORY
+              value: "3G"
+            - name: SPARK_WORKER_CORES
+              value: "2"
+          ports:
+            - name: ui
+              containerPort: 8081
+          readinessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  Template — rendered by: scripts/generate_configs.sh
+  Output:   config/hive/hive-site.xml  (gitignored)
+
+  Hive Standalone Metastore configuration.
+  DB backend  : MariaDB (cdc-mariadb:3306)
+  Object store: MinIO  (cdc-minio:9000)  s3a://warehouse/
+-->
+<configuration>
+
+  <!-- ── Metastore thrift URI ──────────────────── -->
+  <property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://0.0.0.0:9083</value>
+  </property>
+
+  <!-- ── JDBC connection (MariaDB) ─────────────── -->
+  <property>
+    <name>javax.jdo.option.ConnectionDriverName</name>
+    <value>com.mysql.cj.jdbc.Driver</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionURL</name>
+    <value>jdbc:mysql://mariadb:3306/metastore?createDatabaseIfNotExist=true&amp;useSSL=false&amp;allowPublicKeyRetrieval=true</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionUserName</name>
+    <value>hive</value>
+  </property>
+  <property>
+    <name>javax.jdo.option.ConnectionPassword</name>
+    <value>${MARIADB_HIVE_PASSWORD}</value>
+  </property>
+
+  <!-- ── Schema auto-creation ──────────────────── -->
+  <property>
+    <name>datanucleus.autoCreateSchema</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>datanucleus.fixedDatastore</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.metastore.schema.verification</name>
+    <value>false</value>
+  </property>
+
+  <!-- ── Warehouse location (MinIO) ────────────── -->
+  <property>
+    <name>hive.metastore.warehouse.dir</name>
+    <value>s3a://warehouse/</value>
+  </property>
+
+  <!-- ── S3A / MinIO — credentials from .env ─────── -->
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>${MINIO_ROOT_USER}</value>
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>${MINIO_ROOT_PASSWORD}</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.connection.ssl.enabled</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>fs.s3a.aws.credentials.provider</name>
+    <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+  </property>
+
+  <!-- ── Misc metastore tuning ─────────────────── -->
+  <property>
+    <name>hive.metastore.event.db.notification.api.auth</name>
+    <value>false</value>
+  </property>
+  <property>
+    <name>hive.metastore.disallow.incompatible.col.type.changes</name>
+    <value>false</value>
+  </property>
+
+</configuration>

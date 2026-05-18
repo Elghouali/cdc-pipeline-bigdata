@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Recurse -Force | Select-Object @{Name='Path';Expression={$_.FullName -replace [regex]::Escape\\($PWD.Path\\), '.'}} | Sort-Object Path)",
+      "PowerShell(Get-ChildItem -Recurse | ForEach-Object { $_.FullName } | Sort-Object)"
+    ]
+  }
+}

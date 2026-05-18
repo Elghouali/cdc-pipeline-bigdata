@@ -1,0 +1,141 @@
+# ── Spark Master ──────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-spark-master
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spark-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: spark-master
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.labels" . | nindent 8 }}
+        app.kubernetes.io/component: spark-master
+    spec:
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: spark-master
+          image: {{ .Values.spark.image | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SPARK_MODE
+              value: master
+            - name: SPARK_MASTER_OPTS
+              value: "-Dspark.deploy.defaultCores=4"
+          ports:
+            - name: cluster
+              containerPort: 7077
+            - name: ui
+              containerPort: 8080
+          volumeMounts:
+            - name: spark-conf
+              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+          readinessProbe:
+            tcpSocket:
+              port: 7077
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 7077
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.spark.master.resources | nindent 12 }}
+      volumes:
+        - name: spark-conf
+          configMap:
+            name: cdc-config
+            items:
+              - key: spark-defaults.conf
+                path: spark-defaults.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-spark-master
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spark-master
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "cdc-pipeline.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: spark-master
+  ports:
+    - name: cluster
+      port: 7077
+      targetPort: cluster
+    - name: ui
+      port: 8085
+      targetPort: ui
+---
+# ── Spark Worker ──────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-spark-worker
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: spark-worker
+spec:
+  replicas: {{ .Values.spark.worker.replicas | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: spark-worker
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.labels" . | nindent 8 }}
+        app.kubernetes.io/component: spark-worker
+    spec:
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-master
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until nc -z cdc-spark-master 7077; do echo waiting for spark-master; sleep 3; done
+      containers:
+        - name: spark-worker
+          image: {{ .Values.spark.image | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SPARK_MODE
+              value: worker
+            - name: SPARK_MASTER_URL
+              value: "spark://cdc-spark-master:7077"
+            - name: SPARK_WORKER_MEMORY
+              value: {{ .Values.spark.worker.workerMemory | default "3G" | quote }}
+            - name: SPARK_WORKER_CORES
+              value: {{ .Values.spark.worker.workerCores | default 2 | quote }}
+          ports:
+            - name: ui
+              containerPort: 8081
+          volumeMounts:
+            - name: spark-conf
+              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+          readinessProbe:
+            tcpSocket:
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.spark.worker.resources | nindent 12 }}
+      volumes:
+        - name: spark-conf
+          configMap:
+            name: cdc-config
+            items:
+              - key: spark-defaults.conf
+                path: spark-defaults.conf

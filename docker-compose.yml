@@ -22,6 +22,8 @@ volumes:
   minio-data:
   mariadb-data:
   ivy2-cache:          # Maven/Ivy JAR cache shared across Spark containers
+  prometheus-data:
+  grafana-data:
 
 # ─────────────────────────────────────────────
 services:
@@ -110,6 +112,7 @@ services:
   kafka-connect:
     image: debezium/connect:2.5
     container_name: cdc-kafka-connect
+    restart: on-failure
     depends_on:
       kafka:
         condition: service_healthy
@@ -239,6 +242,7 @@ services:
   spark-master:
     image: bitnami/spark:3.5
     container_name: cdc-spark-master
+    restart: on-failure
     environment:
       SPARK_MODE:        master
       SPARK_MASTER_OPTS: "-Dspark.deploy.defaultCores=4"
@@ -256,6 +260,7 @@ services:
   spark-worker:
     image: bitnami/spark:3.5
     container_name: cdc-spark-worker
+    restart: on-failure
     depends_on:
       - spark-master
     environment:
@@ -294,6 +299,33 @@ services:
     networks:
       - cdc-net
 
+  # ── CDC Pipeline API (Phase 2) ────────────────
+  api:
+    build:
+      context: ./api
+      target: prod
+    container_name: cdc-api
+    restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ecommerce
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      TRINO_URL: http://trino:8080
+      KAFKA_CONNECT_URL: http://kafka-connect:8083
+      SPARK_MASTER_URL: http://spark-master:8085
+      API_SECRET_KEY: ${API_SECRET_KEY:-change_me_secret}
+      API_ACCESS_TOKEN_EXPIRE_MINUTES: ${API_ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      API_ADMIN_PASSWORD: ${API_ADMIN_PASSWORD:-admin}
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+    ports:
+      - "8000:8000"
+    networks:
+      - cdc-net
+
   # ── Apache Superset ───────────────────────────
   superset:
     image: apache/superset:3.1.0
@@ -317,5 +349,107 @@ services:
         superset init &&
         superset run -p 8088 --with-threads --reload --debugger
       "
+    networks:
+      - cdc-net
+
+  # ── Prometheus ────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: cdc-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - cdc-net
+
+  # ── Alertmanager ─────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: cdc-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - cdc-net
+
+  # ── Grafana ──────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: cdc-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - cdc-net
+
+  # ── Loki (log aggregation) ────────────────────
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: cdc-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - cdc-net
+
+  # ── Promtail (log collector) ──────────────────
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: cdc-promtail
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - cdc-net
+
+  # ── Kafka Exporter ────────────────────────────
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: cdc-kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - cdc-net
+
+  # ── Postgres Exporter ─────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: cdc-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ecommerce?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - cdc-net

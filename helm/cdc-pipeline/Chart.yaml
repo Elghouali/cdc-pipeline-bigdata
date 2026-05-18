@@ -1,0 +1,16 @@
+apiVersion: v2
+name: cdc-pipeline
+description: Enterprise CDC Medallion Lakehouse Pipeline
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - cdc
+  - kafka
+  - spark
+  - iceberg
+  - lakehouse
+maintainers:
+  - name: CDC Pipeline Team
+sources:
+  - https://github.com/your-org/cdc-pipeline

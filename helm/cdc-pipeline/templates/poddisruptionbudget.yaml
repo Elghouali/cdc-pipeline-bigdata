@@ -1,0 +1,29 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cdc-postgres
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cdc-kafka
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kafka
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kafka
+{{- end }}

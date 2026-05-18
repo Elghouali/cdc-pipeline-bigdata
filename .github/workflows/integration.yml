@@ -1,0 +1,76 @@
+name: Integration Tests
+
+on:
+  # Run on demand from the Actions tab.
+  workflow_dispatch:
+  # Weekly smoke test of the full stack — Sundays at 03:00 UTC.
+  schedule:
+    - cron: "0 3 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Full-Stack Integration
+    runs-on: ubuntu-latest
+    # The full Docker stack (Kafka, Postgres, Spark, Trino, ...) needs headroom.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create test .env
+        run: |
+          cp .env.example .env
+          echo ".env created from .env.example for the integration run."
+
+      - name: Install API test dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -f api/requirements.txt ]; then
+            pip install -r api/requirements.txt
+          else
+            pip install pytest pytest-asyncio httpx
+          fi
+
+      - name: Generate config files
+        run: make generate-configs
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d
+
+      - name: Wait for services to be healthy
+        run: |
+          set -euo pipefail
+          echo "Waiting up to 120s for all containers to report healthy..."
+          timeout 120 bash -c '
+            until [ "$(docker compose ps --format "{{.Health}}" \
+              | grep -c -v -e "^healthy$" -e "^$" || true)" -eq 0 ]; do
+              echo "  ...still waiting"
+              sleep 5
+            done
+          '
+          echo "All services healthy."
+          docker compose ps
+
+      - name: Register Debezium connector
+        run: make connector-register
+
+      - name: Run Python integration tests
+        run: make test-python
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v --remove-orphans

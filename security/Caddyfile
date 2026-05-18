@@ -1,0 +1,89 @@
+# ──────────────────────────────────────────────────────────────
+#  CDC Pipeline — Caddy v2 reverse proxy
+#
+#  Terminates TLS and is the single public entrypoint for the
+#  stack. Everything else stays on the internal cdc-net network.
+#
+#  Local development : Caddy issues a self-signed certificate
+#                      for `localhost` automatically (tls internal).
+#  Production        : replace `localhost` with the real domain
+#                      and Caddy provisions a Let's Encrypt cert
+#                      automatically (ports 80/443 must be open).
+# ──────────────────────────────────────────────────────────────
+
+# Redirect plain HTTP to HTTPS for any host.
+http:// {
+	redir https://{host}{uri} permanent
+}
+
+localhost {
+	# Caddy serves a locally-trusted self-signed cert for localhost.
+	tls internal
+
+	# ── Public application surface ──────────────────────────────
+
+	# API — JSON backend.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Authentication endpoints.
+	handle /auth/* {
+		reverse_proxy api:8000
+	}
+
+	# ── Internal pipeline UIs (operator tooling) ────────────────
+	# Reachable only via /internal/* so they sit behind the same
+	# TLS boundary as the rest of the stack.
+
+	handle /internal/grafana/* {
+		uri strip_prefix /internal/grafana
+		reverse_proxy grafana:3000
+	}
+
+	handle /internal/trino/* {
+		uri strip_prefix /internal/trino
+		reverse_proxy trino:8080
+	}
+
+	handle /internal/minio/* {
+		uri strip_prefix /internal/minio
+		reverse_proxy minio:9001
+	}
+
+	handle /internal/spark/* {
+		uri strip_prefix /internal/spark
+		reverse_proxy spark-master:8080
+	}
+
+	handle /internal/superset/* {
+		uri strip_prefix /internal/superset
+		reverse_proxy superset:8088
+	}
+
+	handle /internal/connect/* {
+		uri strip_prefix /internal/connect
+		reverse_proxy kafka-connect:8083
+	}
+
+	# ── Frontend (catch-all, evaluated last) ────────────────────
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	# ── Security headers applied to every response ──────────────
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Structured access logs to stdout for Promtail/Loki ingest.
+	log {
+		output stdout
+		format json
+	}
+}

@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-config
+  labels:
+    {{- include "cdc-pipeline.labels" . | nindent 4 }}
+data:
+  # ── Shared non-secret environment ────────────
+  POSTGRES_DB: {{ .Values.postgres.database | quote }}
+  POSTGRES_USER: {{ .Values.postgres.user | quote }}
+  MINIO_ROOT_USER: {{ .Values.minio.rootUser | quote }}
+  MINIO_BUCKET: {{ .Values.minio.bucket | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: "cdc-kafka:9092"
+  HIVE_METASTORE_URI: "thrift://cdc-hive-metastore:9083"
+  TRINO_HOST: "cdc-trino"
+  TRINO_PORT: {{ .Values.trino.service.port | quote }}
+
+  # ── Spark defaults ───────────────────────────
+  spark-defaults.conf: |
+    spark.master                            spark://cdc-spark-master:7077
+    spark.sql.extensions                    org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+    spark.sql.catalog.iceberg               org.apache.iceberg.spark.SparkCatalog
+    spark.sql.catalog.iceberg.type          hive
+    spark.sql.catalog.iceberg.uri           thrift://cdc-hive-metastore:9083
+    spark.sql.catalog.iceberg.warehouse     s3a://{{ .Values.minio.bucket }}/
+    spark.hadoop.fs.s3a.endpoint            http://cdc-minio:{{ .Values.minio.service.apiPort }}
+    spark.hadoop.fs.s3a.path.style.access   true
+    spark.hadoop.fs.s3a.impl                org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.hadoop.fs.s3a.connection.ssl.enabled false
+
+  # ── Trino catalog (iceberg) ──────────────────
+  iceberg.properties: |
+    connector.name=iceberg
+    iceberg.catalog.type=hive_metastore
+    hive.metastore.uri=thrift://cdc-hive-metastore:9083
+    hive.s3.endpoint=http://cdc-minio:{{ .Values.minio.service.apiPort }}
+    hive.s3.path-style-access=true
+    hive.s3.ssl.enabled=false
+
+  # ── Hive site ────────────────────────────────
+  hive-site.xml: |
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>metastore.thrift.uris</name>
+        <value>thrift://cdc-hive-metastore:9083</value>
+      </property>
+      <property>
+        <name>fs.s3a.endpoint</name>
+        <value>http://cdc-minio:{{ .Values.minio.service.apiPort }}</value>
+      </property>
+      <property>
+        <name>fs.s3a.path.style.access</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>fs.s3a.impl</name>
+        <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+      </property>
+    </configuration>

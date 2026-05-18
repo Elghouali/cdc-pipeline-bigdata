@@ -1,0 +1,178 @@
+# ─────────────────────────────────────────────
+#  CDC Pipeline — Helm values
+#  Override per environment with -f or --set.
+# ─────────────────────────────────────────────
+
+global:
+  namespace: cdc-pipeline
+  # Set to "" to use the cluster default StorageClass.
+  storageClass: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# ── Source database ───────────────────────────
+postgres:
+  image: postgres:15
+  database: ecommerce
+  user: postgres
+  # REQUIRED: supply via --set postgres.password=... or a secrets file.
+  password: ""
+  service:
+    port: 5432
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+# ── Kafka + Zookeeper ─────────────────────────
+kafka:
+  image: confluentinc/cp-kafka:7.5.0
+  replicas: 1
+  zookeeperImage: confluentinc/cp-zookeeper:7.5.0
+  service:
+    port: 9092
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
+
+# ── MinIO object storage ──────────────────────
+minio:
+  image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+  rootUser: minioadmin
+  # REQUIRED: supply via --set minio.password=...
+  password: ""
+  bucket: warehouse
+  service:
+    apiPort: 9000
+    consolePort: 9001
+  persistence:
+    size: 50Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+# ── MariaDB (Hive Metastore backend) ──────────
+mariadb:
+  image: mariadb:10.11
+  # Defaulted in secrets.yaml but overridable.
+  hivePassword: hive
+  persistence:
+    size: 8Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+# ── Spark ─────────────────────────────────────
+spark:
+  image: bitnami/spark:3.5
+  master:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"
+  worker:
+    replicas: 1
+    workerMemory: 3G
+    workerCores: 2
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+
+# ── Trino query engine ────────────────────────
+trino:
+  image: trinodb/trino:435
+  workerReplicas: 1
+  service:
+    port: 8080
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2"
+      memory: "4Gi"
+
+# ── FastAPI backend ───────────────────────────
+api:
+  image: ghcr.io/your-org/cdc-api:latest
+  replicas: 1
+  # REQUIRED: supply via --set api.secretKey=...
+  secretKey: ""
+  service:
+    port: 8000
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+# ── React frontend ────────────────────────────
+frontend:
+  image: ghcr.io/your-org/cdc-frontend:latest
+  replicas: 1
+  service:
+    port: 80
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+# ── Grafana (observability) ───────────────────
+grafana:
+  # Stored in the cdc-secrets Secret; consumed via valueFrom secretKeyRef.
+  adminPassword: admin
+
+# ── Ingress ───────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  host: cdc.local
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: cdc-tls
+
+# ── Pod Disruption Budgets ────────────────────
+podDisruptionBudget:
+  enabled: false

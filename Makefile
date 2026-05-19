@@ -1,5 +1,6 @@
 .PHONY: up dev down reset test lint logs status help \
         generate-configs check-env \
+        frontend-install frontend-dev \
         spark-bronze spark-silver spark-gold \
         connector-register simulate \
         api-shell trino-shell postgres-shell
@@ -110,6 +111,20 @@ lint-frontend:                          ## Lint TypeScript with ESLint + type ch
 lint-shell:                             ## Lint shell scripts with shellcheck
 	@if command -v shellcheck >/dev/null 2>&1; then \
 	  shellcheck scripts/*.sh; \
+	fi
+
+frontend-install:                       ## Install frontend npm dependencies
+	@if [ -d frontend ]; then \
+	  cd frontend && npm install; \
+	else \
+	  echo "Frontend directory not found."; \
+	fi
+
+frontend-dev:                           ## Start frontend dev server locally (no Docker)
+	@if [ -d frontend ]; then \
+	  cd frontend && npm run dev; \
+	else \
+	  echo "Frontend directory not found."; \
 	fi
 
 # ── Spark job submission ───────────────────────────────────────────────────────

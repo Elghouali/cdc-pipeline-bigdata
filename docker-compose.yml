@@ -453,3 +453,43 @@ services:
         condition: service_healthy
     networks:
       - cdc-net
+
+  # ── Backend API ───────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: cdc-api
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ecommerce"
+      TRINO_URL: "http://trino:8080"
+      KAFKA_CONNECT_URL: "http://kafka-connect:8083"
+      SPARK_MASTER_URL: "http://spark-master:8080"
+      API_SECRET_KEY: "${API_SECRET_KEY:-changeme-in-production}"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - cdc-net
+
+  # ── Frontend (dev server) ─────────────────────
+  frontend:
+    image: node:20-alpine
+    container_name: cdc-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      VITE_API_PROXY: "http://api:8000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - cdc-net

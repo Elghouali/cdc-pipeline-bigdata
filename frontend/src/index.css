@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --bg-base: #080b14;
+  --bg-surface: #0f1422;
+  --bg-elevated: #161d2f;
+  --bg-hover: #1a2338;
+  --border: #1e2a3d;
+  --border-focus: #2a3a58;
+
+  --text-primary: #e8eeff;
+  --text-secondary: #8b9fc4;
+  --text-muted: #4a5a7a;
+
+  --accent-cyan: #00d4ff;
+  --accent-emerald: #00ff88;
+  --accent-amber: #ffb800;
+  --accent-red: #ff4b4b;
+  --accent-purple: #a78bfa;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(30, 42, 61, 0.8);
+  --shadow-glow-cyan: 0 0 20px rgba(0, 212, 255, 0.15);
+  --shadow-glow-emerald: 0 0 20px rgba(0, 255, 136, 0.15);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
+body {
+  min-height: 100%;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+
+a { color: var(--accent-cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+input, button, select, textarea { font-family: inherit; font-size: inherit; }
+
+button { cursor: pointer; }
+
+.font-mono { font-family: var(--font-mono); }

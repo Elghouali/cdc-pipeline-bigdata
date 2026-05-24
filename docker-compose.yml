@@ -203,7 +203,8 @@ services:
 
   # ── Hive Standalone Metastore ─────────────────
   hive-metastore:
-    image: apache/hive:4.0.0
+    build:
+      context: ./hive
     container_name: cdc-hive-metastore
     depends_on:
       mariadb:

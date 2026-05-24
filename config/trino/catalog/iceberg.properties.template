@@ -15,5 +15,5 @@ hive.s3.ssl.enabled=false
 
 iceberg.file-format=PARQUET
 iceberg.compression-codec=SNAPPY
-iceberg.target-max-file-size=134217728
+iceberg.target-max-file-size=128MB
 iceberg.register-table-procedure.enabled=true

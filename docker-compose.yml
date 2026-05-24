@@ -105,6 +105,10 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 768m
     networks:
       - cdc-net
 
@@ -138,6 +142,10 @@ services:
       interval: 15s
       timeout: 10s
       retries: 15
+    deploy:
+      resources:
+        limits:
+          memory: 640m
     networks:
       - cdc-net
 
@@ -235,6 +243,10 @@ services:
       timeout: 10s
       retries: 20
       start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 700m
     networks:
       - cdc-net
 
@@ -268,13 +280,17 @@ services:
     depends_on:
       - spark-master
     environment:
-      SPARK_WORKER_MEMORY: 3g
+      SPARK_WORKER_MEMORY: 1g
       SPARK_WORKER_CORES: "2"
       SPARK_WORKER_WEBUI_PORT: "8081"
     volumes:
       - ./spark_jobs:/opt/spark-apps
       - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ivy2-cache:/root/.ivy2
+    deploy:
+      resources:
+        limits:
+          memory: 1.5g
     networks:
       - cdc-net
 
@@ -297,6 +313,10 @@ services:
       interval: 15s
       timeout: 10s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 2.5g
     networks:
       - cdc-net
 

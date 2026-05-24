@@ -240,7 +240,7 @@ services:
 
   # ── Spark Master ──────────────────────────────
   spark-master:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:3.5.3
     container_name: cdc-spark-master
     restart: on-failure
     environment:
@@ -258,7 +258,7 @@ services:
 
   # ── Spark Worker ──────────────────────────────
   spark-worker:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:3.5.3
     container_name: cdc-spark-worker
     restart: on-failure
     depends_on:

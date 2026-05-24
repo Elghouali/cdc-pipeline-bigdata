@@ -296,7 +296,7 @@ services:
       - ./config/trino/node.properties:/etc/trino/node.properties:ro
       - ./config/trino/catalog/iceberg.properties:/etc/trino/catalog/iceberg.properties:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/status | grep -q ACTIVE"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/status | grep -q coordinator"]
       interval: 15s
       timeout: 10s
       retries: 20

@@ -240,39 +240,43 @@ services:
 
   # ── Spark Master ──────────────────────────────
   spark-master:
-    image: bitnami/spark:3.5.3
+    image: apache/spark:3.5.3-python3
     container_name: cdc-spark-master
     restart: on-failure
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     environment:
-      SPARK_MODE:        master
-      SPARK_MASTER_OPTS: "-Dspark.deploy.defaultCores=4"
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: "7077"
+      SPARK_MASTER_WEBUI_PORT: "8080"
     ports:
       - "7077:7077"
-      - "8085:8080"     # Spark Master UI (8081 used by worker)
+      - "8085:8080"     # Spark Master UI
     volumes:
       - ./spark_jobs:/opt/spark-apps
-      - ./config/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ivy2-cache:/root/.ivy2
     networks:
       - cdc-net
 
   # ── Spark Worker ──────────────────────────────
   spark-worker:
-    image: bitnami/spark:3.5.3
+    image: apache/spark:3.5.3-python3
     container_name: cdc-spark-worker
     restart: on-failure
+    user: root
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     depends_on:
       - spark-master
     environment:
-      SPARK_MODE:          worker
-      SPARK_MASTER_URL:    spark://spark-master:7077
-      SPARK_WORKER_MEMORY: 3G
-      SPARK_WORKER_CORES:  2
+      SPARK_WORKER_MEMORY: 3g
+      SPARK_WORKER_CORES: "2"
+      SPARK_WORKER_WEBUI_PORT: "8081"
     ports:
       - "8086:8081"     # Spark Worker UI
     volumes:
       - ./spark_jobs:/opt/spark-apps
-      - ./config/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ivy2-cache:/root/.ivy2
     networks:
       - cdc-net

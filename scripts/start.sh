@@ -79,7 +79,7 @@ spark_submit() {
   local job="$1"
   log "spark-submit: ${job} …"
   docker exec -d cdc-spark-master \
-    spark-submit \
+    /opt/spark/bin/spark-submit \
       --master spark://spark-master:7077 \
       --deploy-mode client \
       "/opt/spark-apps/${job}"

@@ -130,19 +130,19 @@ frontend-dev:                           ## Start frontend dev server locally (no
 # ── Spark job submission ───────────────────────────────────────────────────────
 
 spark-bronze:                           ## Submit Bronze streaming job
-	$(COMPOSE) exec spark-master spark-submit \
+	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/bronze_job.py
 
 spark-silver:                           ## Submit Silver streaming job
-	$(COMPOSE) exec spark-master spark-submit \
+	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/silver_job.py
 
 spark-gold:                             ## Submit Gold batch job
-	$(COMPOSE) exec spark-master spark-submit \
+	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/gold_job.py

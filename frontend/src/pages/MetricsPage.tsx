@@ -4,7 +4,7 @@ import { fetchMetrics } from '@/lib/api';
 import type { Layer, MetricsResponse, TableMetric } from '@/types/api';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { PageSpinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonTableRow } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { formatNumber, formatRelativeTime } from '@/lib/utils';
 
@@ -88,7 +88,31 @@ export function MetricsPage() {
         ))}
       </div>
 
-      {loading && <PageSpinner />}
+      {loading && (
+        <>
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-lg" />
+            ))}
+          </div>
+          <Card className="overflow-hidden p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[--border] bg-[--bg-elevated]">
+                  {['Table', 'Rows', 'Volume', 'Latest Partition', 'Status'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[--text-muted]">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => <SkeletonTableRow key={i} />)}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
 
       {!loading && error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">

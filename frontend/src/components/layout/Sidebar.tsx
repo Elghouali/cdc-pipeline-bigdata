@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const { username, logout } = useAuth();
   const [status, setStatus] = useState<{ up: number; total: number } | null>(null);
+  const [time, setTime] = useState(() => new Date());
 
   useEffect(() => {
     async function poll() {
@@ -27,6 +28,11 @@ export function Sidebar() {
     }
     void poll();
     const id = setInterval(poll, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -64,15 +70,22 @@ export function Sidebar() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+                'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
                 isActive
                   ? 'bg-cyan-500/15 text-cyan-300 font-medium'
                   : 'text-[--text-secondary] hover:bg-[--bg-hover] hover:text-[--text-primary]',
               )
             }
           >
-            <Icon className="h-4 w-4 shrink-0" />
-            {label}
+            {({ isActive }: { isActive: boolean }) => (
+              <>
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-r-full bg-cyan-400" />
+                )}
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -82,7 +95,9 @@ export function Sidebar() {
         <div className="flex items-center justify-between">
           <div className="min-w-0">
             <p className="truncate text-xs font-medium text-[--text-primary]">{username}</p>
-            <p className="text-[10px] text-[--text-muted]">Signed in</p>
+            <p className="font-mono text-[10px] tabular-nums text-[--text-muted]">
+              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </p>
           </div>
           <button
             onClick={logout}

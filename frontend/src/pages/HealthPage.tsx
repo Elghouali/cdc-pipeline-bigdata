@@ -4,7 +4,7 @@ import { fetchHealth } from '@/lib/api';
 import type { HealthItem } from '@/types/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { PageSpinner } from '@/components/ui/Spinner';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { formatLatency, formatRelativeTime } from '@/lib/utils';
 
 const SERVICE_META: Record<string, { label: string; icon: React.ElementType; desc: string }> = {
@@ -94,7 +94,11 @@ export function HealthPage() {
         </div>
       </div>
 
-      {loading && <PageSpinner />}
+      {loading && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      )}
 
       {!loading && error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">

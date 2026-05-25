@@ -103,26 +103,30 @@ export function DashboardPage() {
 
   async function load() {
     setLoading(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
+      const sig = controller.signal;
       const [tR, cR, pR, sR, catR] = await Promise.all([
         runQuery(`SELECT sale_date, SUM(gross_revenue) AS gross, SUM(net_revenue) AS net
                   FROM iceberg.analytics.gold_sales_facts
                   WHERE sale_date >= current_date - interval '14' day
-                  GROUP BY sale_date ORDER BY sale_date`),
+                  GROUP BY sale_date ORDER BY sale_date`, sig),
         runQuery(`SELECT channel, SUM(gross_revenue) AS revenue
                   FROM iceberg.analytics.gold_sales_facts
-                  GROUP BY channel ORDER BY revenue DESC`),
+                  GROUP BY channel ORDER BY revenue DESC`, sig),
         runQuery(`SELECT method AS name, SUM(transaction_count) AS value
                   FROM iceberg.analytics.gold_payments_summary
-                  GROUP BY method ORDER BY value DESC`),
+                  GROUP BY method ORDER BY value DESC`, sig),
         runQuery(`SELECT customer_segment AS segment, SUM(order_count) AS orders,
                          SUM(gross_revenue) AS revenue
                   FROM iceberg.analytics.gold_sales_facts
-                  GROUP BY customer_segment`),
+                  GROUP BY customer_segment`, sig),
         runQuery(`SELECT product_category AS category, SUM(gross_revenue) AS revenue
                   FROM iceberg.analytics.gold_sales_facts
-                  GROUP BY product_category ORDER BY revenue DESC LIMIT 6`),
+                  GROUP BY product_category ORDER BY revenue DESC LIMIT 6`, sig),
       ]);
+      clearTimeout(timeout);
       setDash({
         trend:      tR.map((r) => ({ date: String(r.sale_date), gross: Number(r.gross), net: Number(r.net) })),
         channels:   cR.map((r) => ({ channel: String(r.channel), revenue: Number(r.revenue) })),
@@ -132,6 +136,7 @@ export function DashboardPage() {
       });
       setIsDemo(false);
     } catch {
+      clearTimeout(timeout);
       setDash({ trend: buildMockTrend(), channels: MOCK_CHANNELS, payments: MOCK_PAYMENTS, segments: MOCK_SEGMENTS, categories: MOCK_CATEGORIES });
       setIsDemo(true);
     } finally {

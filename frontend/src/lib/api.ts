@@ -46,11 +46,12 @@ export async function fetchMetrics(layer: Layer): Promise<MetricsResponse> {
   return res.json() as Promise<MetricsResponse>;
 }
 
-export async function runQuery(sql: string): Promise<QueryRow[]> {
+export async function runQuery(sql: string, signal?: AbortSignal): Promise<QueryRow[]> {
   const res = await fetch(`${BASE}/api/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ sql }),
+    signal,
   });
   await checkOk(res);
   return parseNdjson<QueryRow>(res);

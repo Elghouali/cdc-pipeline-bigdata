@@ -1,79 +1,70 @@
 import { FormEvent, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { AlertCircle, Lock, WifiOff } from 'lucide-react';
+import { Lock, Database, Share2, Zap, Layers, Server, HardDrive } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const PIPELINE_NODES = [
-  { id: 'pg',      label: 'PostgreSQL', sublabel: ':5432', color: '#58A6FF', bg: '#58A6FF18' },
-  { id: 'kafka',   label: 'Kafka',      sublabel: ':9092', color: '#FFA657', bg: '#FFA65718' },
-  { id: 'spark',   label: 'Spark',      sublabel: ':7077', color: '#D29922', bg: '#D2992218' },
-  { id: 'iceberg', label: 'Iceberg',    sublabel: 'tables', color: '#79C0FF', bg: '#79C0FF18' },
-  { id: 'trino',   label: 'Trino',      sublabel: ':8080', color: '#BC8CFF', bg: '#BC8CFF18' },
-  { id: 'minio',   label: 'MinIO',      sublabel: ':9000', color: '#3FB950', bg: '#3FB95018' },
+  { id: 'pg',      label: 'PostgreSQL', sublabel: ':5432', color: '#58A6FF', icon: Database },
+  { id: 'kafka',   label: 'Kafka',      sublabel: ':9092', color: '#FFA657', icon: Share2 },
+  { id: 'spark',   label: 'Spark',      sublabel: ':7077', color: '#D29922', icon: Zap },
+  { id: 'iceberg', label: 'Iceberg',    sublabel: 'tables', color: '#79C0FF', icon: Layers },
+  { id: 'trino',   label: 'Trino',      sublabel: ':8080', color: '#BC8CFF', icon: Server },
+  { id: 'minio',   label: 'MinIO',      sublabel: ':9000', color: '#3FB950', icon: HardDrive },
 ];
 
-const TECH_PILLS = ['KAFKA', 'SPARK', 'ICEBERG', 'TRINO', 'MINIO'];
-
 function PipelineDiagram() {
-  const nodeW = 80;
-  const gap = 28;
-
   return (
-    <div className="relative flex items-center">
-      {PIPELINE_NODES.map((node, idx) => (
-        <div key={node.id} className="flex items-center">
-          {/* Node */}
-          <div className="group relative flex flex-col items-center" style={{ width: nodeW }}>
-            {/* Tooltip */}
-            <div className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded border border-[--border] bg-[--bg-surface] px-2 py-1 font-mono text-[9px] text-[--text-muted] opacity-0 transition-opacity group-hover:opacity-100">
-              {node.label} · {node.sublabel}
-            </div>
-            <div
-              className="relative flex h-14 w-full flex-col items-center justify-center rounded-lg border transition-transform group-hover:scale-105"
-              style={{ backgroundColor: node.bg, borderColor: `${node.color}45` }}
-            >
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[--bg-base] node-glow" style={{ backgroundColor: '#3FB950' }} />
-              <span className="font-mono text-[10px] font-bold" style={{ color: node.color }}>{node.label}</span>
-              <span className="font-mono text-[8px] mt-0.5" style={{ color: `${node.color}80` }}>{node.sublabel}</span>
-            </div>
-          </div>
-
-          {/* Arrow connector */}
-          {idx < PIPELINE_NODES.length - 1 && (
-            <div className="relative mx-1 flex items-center" style={{ width: gap }}>
-              <div className="h-px w-full bg-[--border]" />
-              <svg
-                className="absolute left-0 w-full overflow-visible"
-                height="3"
-                viewBox={`0 0 ${gap} 3`}
-                preserveAspectRatio="none"
+    <div className="relative flex items-center justify-center w-full max-w-4xl px-8 mt-12">
+      {PIPELINE_NODES.map((node, idx) => {
+        const Icon = node.icon;
+        return (
+          <div key={node.id} className="flex items-center">
+            {/* Node */}
+            <div className="group relative flex flex-col items-center w-20">
+              {/* Tooltip */}
+              <div className="pointer-events-none absolute -top-12 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-black/60 px-4 py-2 font-mono text-xs text-white opacity-0 shadow-2xl backdrop-blur-md transition-all duration-300 group-hover:-top-14 group-hover:opacity-100">
+                <span className="font-bold tracking-wide" style={{ color: node.color }}>{node.label}</span>
+                <span className="ml-2 text-white/50">{node.sublabel}</span>
+              </div>
+              
+              <div
+                className="relative flex h-20 w-20 items-center justify-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-lg transition-all duration-500 group-hover:-translate-y-2 group-hover:scale-110"
+                style={{ boxShadow: `0 8px 32px ${node.color}15, inset 0 1px 1px rgba(255,255,255,0.2)` }}
               >
-                <line
-                  x1="0" y1="1.5" x2={gap} y2="1.5"
-                  stroke={node.color}
-                  strokeWidth="1.5"
-                  strokeDasharray="5 5"
-                  opacity="0.65"
-                  className="dash-flow"
-                  style={{ animationDelay: `${idx * 0.35}s` }}
-                />
-              </svg>
-              <svg className="absolute right-0 shrink-0" width="6" height="7" viewBox="0 0 6 7">
-                <path d="M0 0 L6 3.5 L0 7 Z" fill={node.color} opacity="0.55" />
-              </svg>
+                {/* Glow Behind Icon */}
+                <div className="absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" style={{ background: `radial-gradient(circle at center, ${node.color}40 0%, transparent 70%)` }} />
+                
+                {/* Live Status Dot */}
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-[#00ffaa] opacity-75 status-pulse" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#00ffaa] shadow-[0_0_10px_#00ffaa]" />
+                </span>
+                
+                <Icon className="relative z-10 h-8 w-8 transition-colors duration-300" style={{ color: node.color }} strokeWidth={1.5} />
+              </div>
             </div>
-          )}
-        </div>
-      ))}
+
+            {/* Connection Arrow */}
+            {idx < PIPELINE_NODES.length - 1 && (
+              <div className="relative mx-8 flex w-16 items-center">
+                <svg className="w-full h-2 overflow-visible" preserveAspectRatio="none">
+                  <line
+                    x1="0" y1="4" x2="100%" y2="4"
+                    stroke={node.color}
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    className="dash-flow-fast"
+                    opacity="0.4"
+                  />
+                  <polygon points="60,1 66,4 60,7" fill={node.color} opacity="0.6" />
+                </svg>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
-}
-
-function getErrorType(msg: string): 'server' | 'auth' | 'network' | 'generic' {
-  if (msg.includes('500') || msg.includes('API')) return 'server';
-  if (msg.includes('401') || msg.includes('credentials') || msg.includes('Invalid')) return 'auth';
-  if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed to fetch')) return 'network';
-  return 'generic';
 }
 
 export function LoginPage() {
@@ -100,140 +91,134 @@ export function LoginPage() {
     }
   }
 
-  const errType = error ? getErrorType(error) : null;
-
   return (
-    <div className="flex min-h-screen bg-[--bg-base]">
+    <div className="flex min-h-screen bg-black font-sans selection:bg-cyan-500/30 selection:text-white">
 
       {/* LEFT panel (60%) */}
-      <div
-        className="relative hidden flex-col items-center justify-center overflow-hidden lg:flex"
-        style={{ width: '60%' }}
-      >
-        <div className="dot-grid absolute inset-0 opacity-50" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,transparent_30%,#0D1117_100%)]" />
+      <div className="relative hidden w-[60%] flex-col items-center justify-center overflow-hidden border-r border-white/5 lg:flex">
+        {/* Antigravity Orbs */}
+        <div className="absolute left-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-[#BC8CFF] opacity-10 blur-[100px] mix-blend-screen" />
+        <div className="absolute bottom-[-10%] right-[-10%] h-[600px] w-[600px] rounded-full bg-[#00D4FF] opacity-10 blur-[100px] mix-blend-screen" />
+        
+        {/* Fine SVG Grid */}
+        <div className="absolute inset-0 z-0 opacity-20" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'32\' height=\'32\' viewBox=\'0 0 32 32\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Ccircle cx=\'1\' cy=\'1\' r=\'1\' fill=\'rgba(255,255,255,0.5)\'/%3E%3C/svg%3E")' }} />
+        
+        {/* Radial Fade */}
+        <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_0%,#000000_85%)]" />
 
-        <div className="relative z-10 flex flex-col items-center gap-12 px-16">
-          <div className="text-center">
-            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-[--text-dim]">
-              Real-time data engineering control center
-            </p>
-            <h1 className="text-4xl font-bold tracking-tight text-[--text-primary]">
-              Medallion <span className="gradient-text">Pipeline</span>
-            </h1>
-            <p className="mt-2 text-sm text-[--text-muted]">
-              End-to-end CDC · Bronze → Silver → Gold
-            </p>
-          </div>
+        <div className="relative z-10 flex w-full flex-col items-center justify-center">
+          <PipelineDiagram />
+        </div>
 
-          <div className="overflow-x-auto pb-2">
-            <PipelineDiagram />
-          </div>
-
-          <div className="flex items-center gap-3">
-            {[
-              { label: 'BRONZE', color: '#B08050' },
-              { label: 'SILVER', color: '#8B949E' },
-              { label: 'GOLD',   color: '#D29922' },
-            ].map(({ label, color }) => (
-              <span
-                key={label}
-                className="rounded border px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[0.1em]"
-                style={{ borderColor: `${color}40`, color, backgroundColor: `${color}10` }}
-              >
-                {label}
-              </span>
-            ))}
-            <span className="font-mono text-[10px] text-[--text-dim]">v1.0</span>
+        {/* Floating Glass Badge */}
+        <div className="absolute bottom-12 z-10 flex items-center gap-6 rounded-full border border-white/10 bg-white/[0.03] px-8 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+          <span className="font-mono text-[12px] font-bold text-white/60">v1.0.4</span>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest text-[#FFA657] drop-shadow-[0_0_8px_rgba(255,166,87,0.4)]">
+              <div className="h-1.5 w-1.5 rounded-full bg-[#FFA657]" /> BRONZE
+            </span>
+            <span className="font-mono text-[11px] font-bold tracking-widest text-white/20">/</span>
+            <span className="flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest text-[#E6EDF3] drop-shadow-[0_0_8px_rgba(230,237,243,0.4)]">
+              <div className="h-1.5 w-1.5 rounded-full bg-[#E6EDF3]" /> SILVER
+            </span>
+            <span className="font-mono text-[11px] font-bold tracking-widest text-white/20">/</span>
+            <span className="flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest text-[#D29922] drop-shadow-[0_0_8px_rgba(210,153,34,0.4)]">
+              <div className="h-1.5 w-1.5 rounded-full bg-[#D29922]" /> GOLD
+            </span>
           </div>
         </div>
       </div>
 
       {/* RIGHT panel (40%) */}
-      <div className="flex flex-1 flex-col items-center justify-center border-l border-[--border] bg-[--bg-surface] px-8 py-12 lg:px-12">
-        <div className="w-full" style={{ maxWidth: 380 }}>
+      <div className="relative flex w-full flex-col items-center justify-center bg-[#050505] p-16 lg:w-[40%] shadow-[-20px_0_40px_rgba(0,0,0,0.5)] z-20">
+        
+        {/* Ambient subtle glow on the right panel */}
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#BC8CFF] opacity-[0.04] blur-[100px]" />
 
-          <div className="mb-8">
-            <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[--border] bg-[--bg-elevated]">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#00D4FF" strokeWidth={2}>
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
+        <div className="relative z-10 w-full max-w-[420px]">
+          
+          {/* Header */}
+          <div className="mb-16 flex flex-col items-center text-center">
+            <div className="relative mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0A0A0A] border border-white/10 shadow-[0_8px_16px_rgba(0,0,0,0.4)]">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-[#00D4FF]/10 to-[#BC8CFF]/10" />
+              <Zap className="h-6 w-6 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]" strokeWidth={2} />
             </div>
-            <h2 className="text-2xl font-bold text-[--text-primary]">CDC Pipeline</h2>
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[--text-dim]">
-              MEDALLION REAL-TIME CONSOLE
+            <h1 className="text-[26px] font-semibold tracking-tight text-white drop-shadow-sm">Sign in to Console</h1>
+            <p className="mt-2 text-[14px] text-white/40">
+              Enter your credentials to access the pipeline.
             </p>
           </div>
 
+          {/* Error Banner */}
           {error && (
-            <div className={`mb-5 flex items-start gap-3 rounded-lg border p-3 ${
-              errType === 'auth'    ? 'border-[#F85149]/30 bg-[#F85149]/8' :
-              errType === 'network' ? 'border-[--border] bg-[--bg-elevated]' :
-              errType === 'server'  ? 'border-[#D29922]/30 bg-[#D29922]/8' :
-                                     'border-[--border] bg-[--bg-elevated]'
-            }`}>
-              {errType === 'auth'    && <Lock    className="mt-0.5 h-4 w-4 shrink-0 text-[#F85149]" />}
-              {errType === 'network' && <WifiOff  className="mt-0.5 h-4 w-4 shrink-0 text-[--text-muted]" />}
-              {(errType === 'server' || errType === 'generic') && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#D29922]" />}
-              <p className="text-sm" style={{
-                color: errType === 'auth' ? '#F85149' : errType === 'server' ? '#D29922' : '#8B949E',
-              }}>
-                {errType === 'network' ? 'Cannot reach server — check your connection' :
-                 errType === 'auth'    ? 'Invalid credentials' :
-                 errType === 'server'  ? 'API unreachable on :8000' :
-                 error}
+            <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 shadow-[0_0_20px_rgba(248,81,73,0.1)] backdrop-blur-md">
+              <Lock className="h-5 w-5 shrink-0 text-red-400" />
+              <p className="text-sm font-medium text-red-200">
+                {error.includes('fetch') ? 'Cannot reach server' : 'Invalid credentials'}
               </p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="username" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-muted]">
-                Username
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-8">
+            <div className="space-y-2.5">
+              <label className="block px-1 text-[13px] font-medium text-white/70">
+                Username or Service Account
               </label>
               <input
-                id="username"
                 type="text"
-                autoComplete="username"
                 required
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="admin"
-                className="h-12 w-full rounded-md border border-[--border] bg-[--bg-elevated] px-3.5 text-sm text-[--text-primary] placeholder-[--text-dim] outline-none transition-all focus:border-[--accent-cyan] focus:ring-2 focus:ring-[--accent-cyan]/20"
+                placeholder="e.g. data_eng_admin"
+                className="h-[52px] w-full rounded-xl border border-white/10 bg-[#0A0A0A] px-4 text-[15px] text-white shadow-sm outline-none transition-all duration-200 placeholder:text-white/20 hover:border-white/20 focus:border-[#00D4FF]/60 focus:bg-white/[0.02] focus:shadow-[0_0_0_4px_rgba(0,212,255,0.1)]"
               />
             </div>
-            <div>
-              <label htmlFor="password" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-muted]">
-                Password
+            <div className="space-y-2">
+              <label className="flex items-center justify-between px-1 text-[13px] font-medium text-white/70">
+                <span>Password</span>
+                <span className="text-[11px] text-[#00D4FF]/70 hover:text-[#00D4FF] cursor-pointer">Forgot?</span>
               </label>
               <input
-                id="password"
                 type="password"
-                autoComplete="current-password"
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="h-12 w-full rounded-md border border-[--border] bg-[--bg-elevated] px-3.5 text-sm text-[--text-primary] placeholder-[--text-dim] outline-none transition-all focus:border-[--accent-cyan] focus:ring-2 focus:ring-[--accent-cyan]/20"
+                placeholder="••••••••••••"
+                className="h-[52px] w-full rounded-xl border border-white/10 bg-[#0A0A0A] px-4 text-[15px] text-white tracking-widest shadow-sm outline-none transition-all duration-200 placeholder:text-white/20 placeholder:tracking-normal hover:border-white/20 focus:border-[#00D4FF]/60 focus:bg-white/[0.02] focus:shadow-[0_0_0_4px_rgba(0,212,255,0.1)]"
               />
             </div>
+            
             <button
               type="submit"
-              disabled={loading || !username.trim() || !password.trim()}
-              className="mt-6 h-12 w-full rounded-md text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: 'linear-gradient(135deg, #00D4FF 0%, #BC8CFF 100%)' }}
+              disabled={loading}
+              className="group relative mt-10 flex h-[52px] w-full items-center justify-center overflow-hidden rounded-xl bg-white text-[15px] font-semibold text-black transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
-              {loading ? 'Signing in…' : 'Sign in →'}
+              {/* Subtle hover gradient inside the white button */}
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-100 to-purple-100 opacity-0 transition-opacity duration-300 group-hover:opacity-100 mix-blend-multiply" />
+              <span className="relative z-10 flex items-center gap-2">
+                {loading ? 'Authenticating...' : 'Continue'}
+                {!loading && <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>}
+              </span>
             </button>
           </form>
 
-          <div className="mt-8 flex flex-wrap gap-1.5">
-            {TECH_PILLS.map(t => (
-              <span key={t} className="rounded border border-[--border] bg-[--bg-elevated] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[--text-dim]">
-                {t}
-              </span>
-            ))}
+          {/* Footer Pills */}
+          <div className="mt-16 border-t border-white/5 pt-10">
+            <p className="mb-6 text-center text-[11px] font-medium uppercase tracking-[0.2em] text-white/30">
+              Core Infrastructure
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {['Kafka', 'Spark', 'Iceberg', 'Trino', 'MinIO'].map(tech => (
+                <span key={tech} className="flex items-center gap-2 rounded-full border border-white/5 bg-white/[0.02] px-4 py-2 text-[11px] font-medium text-white/50 transition-colors hover:border-white/20 hover:text-white/90">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                  {tech}
+                </span>
+              ))}
+            </div>
           </div>
+
         </div>
       </div>
     </div>

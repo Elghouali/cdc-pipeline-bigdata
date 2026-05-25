@@ -3,10 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/LoginPage';
-import { HealthPage } from '@/pages/HealthPage';
-import { MetricsPage } from '@/pages/MetricsPage';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { StatsPage } from '@/pages/StatsPage';
+import { LayerPage } from '@/pages/LayerPage';
+import { StreamPage } from '@/pages/StreamPage';
 import { QueryPage } from '@/pages/QueryPage';
 
 const queryClient = new QueryClient({
@@ -22,10 +21,11 @@ export function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<AppLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="/health"    element={<HealthPage />}    />
-              <Route path="/metrics"   element={<MetricsPage />}   />
               <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/stats"     element={<StatsPage />}     />
+              <Route path="/bronze"    element={<LayerPage layer="bronze" />} />
+              <Route path="/silver"    element={<LayerPage layer="silver" />} />
+              <Route path="/gold"      element={<LayerPage layer="gold" />} />
+              <Route path="/stream"    element={<StreamPage />}    />
               <Route path="/query"     element={<QueryPage />}     />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -6,10 +6,11 @@ import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 
 const ROUTE_LABELS: Record<string, string> = {
-  '/health':    'Pipeline Health',
-  '/metrics':   'Data Layers',
   '/dashboard': 'Overview',
-  '/stats':     'Event Stream',
+  '/bronze':    'Bronze Layer',
+  '/silver':    'Silver Layer',
+  '/gold':      'Gold Layer',
+  '/stream':    'Event Stream',
   '/query':     'Query Console',
 };
 

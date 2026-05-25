@@ -1,0 +1,1421 @@
+%% ============================================================
+%%  Rapport de Module : Big Data — Architecture CDC Medallion
+%%  Auteur : Zakaria Elghouali
+%%  Langue : Français
+%% ============================================================
+\documentclass[12pt,a4paper]{report}
+
+%% ── Encodage & Langue ──────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+%% ── Mise en page ───────────────────────────────────────────
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+%% ── Polices ────────────────────────────────────────────────
+\usepackage{lmodern}
+\usepackage{microtype}
+
+%% ── Couleurs & Graphiques ──────────────────────────────────
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, backgrounds, calc}
+
+%% ── Tables ─────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{array}
+
+%% ── Code ────────────────────────────────────────────────────
+\usepackage{listings}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    rulecolor=\color{gray!40},
+    breaklines=true,
+    breakatwhitespace=true,
+    keywordstyle=\color{blue!70!black}\bfseries,
+    stringstyle=\color{green!50!black},
+    commentstyle=\color{gray!70}\itshape,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=6pt,
+    tabsize=2,
+    showstringspaces=false,
+    captionpos=b,
+}
+
+%% ── Liens & PDF ─────────────────────────────────────────────
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!70!black,
+    citecolor=green!50!black,
+    pdftitle={Rapport Big Data — Architecture CDC Medallion},
+    pdfauthor={Zakaria Elghouali},
+}
+
+%% ── En-têtes ────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{Architecture CDC Medallion}}
+\fancyhead[R]{\small\textit{Module Big Data}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+%% ── Boîtes ──────────────────────────────────────────────────
+\usepackage{tcolorbox}
+\tcbuselibrary{skins, breakable}
+\newtcolorbox{infobox}[1][]{
+    enhanced, breakable,
+    colback=blue!5!white, colframe=blue!60!black,
+    fonttitle=\bfseries, title=#1,
+}
+
+%% ── Utilitaires ─────────────────────────────────────────────
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{amsmath}
+
+%% ── Couleurs personnalisées ──────────────────────────────────
+\definecolor{bronze}{RGB}{205,127,50}
+\definecolor{argent}{RGB}{150,150,160}
+\definecolor{or}{RGB}{200,160,0}
+\definecolor{darkblue}{RGB}{0,51,102}
+\definecolor{kafkared}{RGB}{200,50,50}
+\definecolor{sparkblue}{RGB}{30,100,200}
+\definecolor{trinoviolet}{RGB}{120,80,180}
+
+%% ════════════════════════════════════════════════════════════
+\begin{document}
+
+%% ── Page de Titre ───────────────────────────────────────────
+\begin{titlepage}
+    \begin{center}
+        \vspace*{0.5cm}
+        {\Large\bfseries École Nationale Supérieure d'Électrotechnique,\\
+        d'Électronique, d'Informatique, d'Hydraulique\\
+        et des Télécommunications}\\[0.3cm]
+        {\large\bfseries ENSET Mohammedia}\\[0.3cm]
+        \rule{\linewidth}{0.6pt}\\[0.5cm]
+
+        {\large Module :}\\[0.2cm]
+        {\LARGE\bfseries Big Data \& Traitement des Données Massives}\\[1cm]
+
+        \rule{\linewidth}{1.5pt}\\[0.8cm]
+
+        {\fontsize{20}{24}\selectfont\bfseries
+        Pipeline CDC en Temps Réel\\[0.3cm]
+        Architecture Medallion sur Lakehouse}\\[0.5cm]
+        {\large\itshape Change Data Capture $\cdot$ Apache Kafka $\cdot$
+        Apache Spark $\cdot$ Apache Iceberg}
+
+        \vspace{0.8cm}
+        \rule{\linewidth}{1.5pt}
+
+        \vspace{1.5cm}
+        \begin{minipage}{0.45\textwidth}
+            \begin{flushleft}
+                \textbf{Réalisé par :}\\[0.3cm]
+                Zakaria \textsc{Elghouali}\\[0.1cm]
+                \small\href{mailto:zakariaelgouali@gmail.com}
+                           {zakariaelgouali@gmail.com}
+            \end{flushleft}
+        \end{minipage}
+        \hfill
+        \begin{minipage}{0.45\textwidth}
+            \begin{flushright}
+                \textbf{Encadrant :}\\[0.3cm]
+                M. \textsc{[Nom Encadrant]}\\[0.6cm]
+                \textbf{Année universitaire :}\\[0.1cm]
+                2025 -- 2026
+            \end{flushright}
+        \end{minipage}
+
+        \vfill
+        {\small\today}
+    \end{center}
+\end{titlepage}
+
+%% ── Résumé ──────────────────────────────────────────────────
+\chapter*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+
+Ce rapport présente la conception et l'implémentation d'un pipeline de
+\textit{Change Data Capture} (CDC) en temps quasi-réel, reposant sur une
+\textbf{architecture Medallion} (Bronze / Argent / Or). Le projet capte les
+modifications de lignes effectuées dans une base de données PostgreSQL
+simulant un système d'e-commerce et les propage, via Apache Kafka et
+Debezium, jusqu'à un \textit{data lakehouse} basé sur Apache Iceberg et MinIO.
+
+Les données traversent trois couches successives traitées par Apache Spark
+Structured Streaming : la couche \textbf{Bronze} (ingestion brute, immuable),
+la couche \textbf{Argent} (déduplication et typage fort) et la couche
+\textbf{Or} (agrégats métier). Le moteur SQL distribué Trino~435 permet
+d'interroger toutes les couches en SQL standard. L'ensemble est exposé via
+une API REST FastAPI sécurisée par JWT, un tableau de bord interactif React,
+et supervisé par Prometheus, Grafana et Loki.
+
+La solution est entièrement conteneurisée (Docker Compose, 20 services),
+déployée sur une machine virtuelle Oracle Cloud Infrastructure (Ubuntu~22.04,
+11,7~Go RAM), et conçue pour être reproductible et opérationnelle en moins de
+15~minutes sur n'importe quelle machine disposant de Docker.
+
+\bigskip
+\textbf{Mots-clés :} Change Data Capture, Medallion Architecture, Apache
+Kafka, Debezium, Apache Spark, Apache Iceberg, Trino, Data Lakehouse,
+Big Data, Temps Réel, Docker.
+
+%% ── Tables ──────────────────────────────────────────────────
+\tableofcontents
+\listoffigures
+\listoftables
+
+%% ════════════════════════════════════════════════════════════
+\chapter{Introduction}
+%% ════════════════════════════════════════════════════════════
+
+\section{Contexte et motivation}
+
+Dans les systèmes d'information modernes, les données évoluent en permanence :
+commandes créées, clients mis à jour, paiements validés. Il est essentiel de
+propager ces changements vers les systèmes analytiques \emph{sans interrompre
+les opérations transactionnelles}. Les approches classiques (extraction en
+batch toutes les nuits) introduisent une latence inacceptable pour les KPI
+temps réel et peuvent surcharger la base source.
+
+Le paradigme du \textbf{Change Data Capture} (CDC) répond à ce besoin : plutôt
+que de copier l'intégralité d'une table à intervalles réguliers, le CDC capture
+chaque modification --- insertion, mise à jour, suppression --- dès qu'elle
+survient, avec une latence inférieure à la seconde.
+
+Ce projet implémente un pipeline CDC complet à partir d'une base PostgreSQL
+d'e-commerce et construit un \textit{lakehouse} analytique selon le modèle
+Medallion, en s'appuyant exclusivement sur des technologies open-source
+leaders dans l'industrie.
+
+\section{Objectifs}
+
+\begin{enumerate}
+    \item Mettre en \oe{}uvre la capture de modifications en temps quasi-réel
+          avec une latence end-to-end inférieure à 10~minutes.
+    \item Construire une architecture Medallion en trois couches (Bronze /
+          Argent / Or) avec Apache Iceberg comme format de table ouvert.
+    \item Démontrer la déduplication, le typage fort et l'agrégation métier
+          dans un contexte de flux de données continu.
+    \item Exposer les données via une API REST sécurisée (JWT) et un tableau
+          de bord interactif.
+    \item Déployer l'ensemble sur une infrastructure conteneurisée
+          auto-suffisante (Docker Compose, 20 services).
+\end{enumerate}
+
+\section{Organisation du rapport}
+
+\begin{itemize}[leftmargin=2cm]
+    \item \textbf{Chapitre~2} --- État de l'art : CDC, architecture Medallion,
+          technologies clés.
+    \item \textbf{Chapitre~3} --- Architecture globale du système.
+    \item \textbf{Chapitre~4} --- Implémentation du pipeline de données.
+    \item \textbf{Chapitre~5} --- API REST, interface utilisateur et monitoring.
+    \item \textbf{Chapitre~6} --- Déploiement et résultats obtenus.
+    \item \textbf{Chapitre~7} --- Conclusion et perspectives.
+\end{itemize}
+
+%% ════════════════════════════════════════════════════════════
+\chapter{État de l'art}
+%% ════════════════════════════════════════════════════════════
+
+\section{Change Data Capture (CDC)}
+
+Le CDC est une technique qui identifie et capture les changements apportés à
+une base de données relationnelle, puis les transmet aux systèmes en aval. Il
+existe plusieurs approches, résumées dans le tableau~\ref{tab:cdc_compare}.
+
+\begin{table}[h]
+\centering
+\caption{Comparaison des approches CDC}
+\label{tab:cdc_compare}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Approche} & \textbf{Latence} & \textbf{Charge source}
+                  & \textbf{Fidélité} & \textbf{Complexité} \\
+\midrule
+Snapshot complet   & Heures      & Très haute & Partielle & Faible  \\
+Timestamp-based    & Minutes     & Moyenne    & Partielle & Faible  \\
+Trigger-based      & Secondes    & Haute      & Complète  & Moyenne \\
+Log-based (WAL)    & Millisecondes & Très faible & Complète & Haute  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'approche \textbf{log-based} est la plus performante car elle lit directement
+le journal des transactions (WAL) sans ajouter de charge à la base source. Elle
+capture toutes les opérations, y compris les suppressions, et garantit l'ordre
+exact des modifications. PostgreSQL expose ce mécanisme via la réplication
+logique (\texttt{wal\_level = logical}).
+
+\section{Architecture Medallion}
+
+Popularisée par Databricks, l'architecture Medallion organise un
+\textit{data lakehouse} en trois couches de qualité croissante
+(figure~\ref{fig:medallion}).
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=2.5cm, >=Stealth]
+    \tikzstyle{layer} = [rectangle, rounded corners=8pt,
+        minimum width=3.4cm, minimum height=1.4cm,
+        text centered, font=\bfseries\small, draw, thick]
+
+    \node[layer, fill=bronze!25, draw=bronze!80] (B)
+        {BRONZE\\[2pt]{\footnotesize Données brutes}};
+    \node[layer, fill=argent!30, draw=argent!80, right of=B, xshift=0.8cm] (S)
+        {ARGENT\\[2pt]{\footnotesize Données propres}};
+    \node[layer, fill=or!40, draw=or!90, right of=S, xshift=0.8cm] (G)
+        {OR\\[2pt]{\footnotesize Agrégats métier}};
+
+    \draw[->, ultra thick, bronze!70] (B) -- (S)
+        node[midway, above, font=\footnotesize\itshape] {MERGE INTO};
+    \draw[->, ultra thick, argent!60] (S) -- (G)
+        node[midway, above, font=\footnotesize\itshape] {Agrégation};
+
+    \node[below=0.5cm of B, text width=3.4cm, font=\footnotesize, align=center]
+        {Append-only\\ Audit trail\\ Latence : 30 s};
+    \node[below=0.5cm of S, text width=3.4cm, font=\footnotesize, align=center]
+        {Upsert ACID\\ Schéma typé\\ Latence : 60 s};
+    \node[below=0.5cm of G, text width=3.4cm, font=\footnotesize, align=center]
+        {KPI métier\\ Snapshot quotidien\\ Latence : 5 min};
+\end{tikzpicture}
+\caption{Les trois couches de l'architecture Medallion}
+\label{fig:medallion}
+\end{figure}
+
+\section{Apache Iceberg --- Format de table ouvert}
+
+Apache Iceberg est un format de table analytique open-source conçu pour
+surmonter les limitations du format Hive classique~:
+
+\begin{itemize}
+    \item \textbf{Transactions ACID} : lectures et écritures cohérentes sans
+          verrou global.
+    \item \textbf{Évolution de schéma} : ajout ou renommage de colonnes sans
+          réécriture des fichiers existants.
+    \item \textbf{Time travel} : consultation de l'état des données à un
+          instant passé via \texttt{AS OF}.
+    \item \textbf{MERGE INTO} : opération upsert atomique combinant INSERT,
+          UPDATE et DELETE en une seule instruction.
+    \item \textbf{Partitionnement caché} : les requêtes n'ont pas besoin de
+          connaître la stratégie de partitionnement.
+\end{itemize}
+
+\section{Debezium --- Connecteur CDC}
+
+Debezium est un connecteur Kafka Connect open-source qui lit le WAL PostgreSQL
+et publie chaque modification sur un topic Kafka au format JSON structuré.
+Chaque message contient l'état \texttt{before} et \texttt{after} de la ligne,
+le type d'opération et les métadonnées de la source.
+
+\begin{lstlisting}[language={},
+    caption={Structure d'un message Debezium (opération UPDATE)}]
+{
+  "op":     "u",
+  "before": { "id": 42, "status": "pending",   "channel": "web" },
+  "after":  { "id": 42, "status": "confirmed",  "channel": "web" },
+  "source": {
+    "db":    "ecommerce",
+    "table": "orders",
+    "ts_ms": 1716604800000,
+    "lsn":   12589
+  },
+  "ts_ms": 1716604800050
+}
+\end{lstlisting}
+
+\section{Stack technologique retenu}
+
+\begin{table}[h]
+\centering
+\caption{Récapitulatif des technologies utilisées}
+\label{tab:stack}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Composant}     & \textbf{Technologie}         & \textbf{Version} \\
+\midrule
+Base source (OLTP)     & PostgreSQL                   & 15               \\
+Bus de messages        & Apache Kafka (Confluent)     & 7.5.0            \\
+Connecteur CDC         & Debezium                     & 2.5              \\
+Traitement de flux     & Apache Spark Structured Streaming & 3.5.3       \\
+Format de table        & Apache Iceberg               & 1.5.2            \\
+Métastore              & Hive Standalone + MariaDB    & 3.1.3 + 10.11   \\
+Stockage objet         & MinIO (S3-compatible)        & 2024-01-16       \\
+Moteur SQL             & Trino                        & 435              \\
+API REST               & FastAPI + Uvicorn            & 0.110+           \\
+Authentification       & JWT (HS256) via python-jose  & 3.3+             \\
+Interface web          & React + TypeScript + Vite    & 18 + 5           \\
+Visualisation BI       & Apache Superset              & 3.1.0            \\
+Monitoring métriques   & Prometheus                   & 2.50.1           \\
+Dashboards             & Grafana                      & 10.3.3           \\
+Agrégation de logs     & Loki + Promtail              & 2.9.4            \\
+Orchestration          & Docker Compose               & v2               \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════
+\chapter{Architecture Globale du Système}
+%% ════════════════════════════════════════════════════════════
+
+\section{Vue d'ensemble}
+
+La figure~\ref{fig:archi} illustre l'architecture complète du pipeline CDC
+Medallion. Les données transitent de gauche à droite, de la base de données
+transactionnelle vers les couches analytiques.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    >=Stealth,
+    box/.style={rectangle, rounded corners=5pt, minimum width=2.8cm,
+                minimum height=1cm, text centered, font=\small\bfseries,
+                draw, thick, inner sep=4pt},
+    arr/.style={->, thick},
+]
+%% Colonne 1 : Source
+\node[box, fill=blue!15, draw=blue!60] (pg)
+    at (0,0) {PostgreSQL 15\\{\tiny WAL Logique}};
+
+%% Colonne 2 : Ingestion
+\node[box, fill=red!12, draw=red!60] (dz)
+    at (3.8,1.2) {Debezium 2.5\\{\tiny Kafka Connect}};
+\node[box, fill=red!20, draw=red!70] (kf)
+    at (3.8,-1.2) {Apache Kafka\\{\tiny 7.5.0}};
+
+%% Colonne 3 : Traitement
+\node[box, fill=sparkblue!18, draw=sparkblue!70] (sp)
+    at (7.8,0) {Apache Spark\\{\tiny 3.5.3 Streaming}};
+
+%% Colonne 4 : Stockage
+\node[box, fill=orange!18, draw=orange!60] (mn)
+    at (11.5,1.2) {MinIO\\{\tiny S3 / Parquet}};
+\node[box, fill=purple!15, draw=purple!60] (hv)
+    at (11.5,-1.2) {Hive Metastore\\{\tiny Catalogue}};
+
+%% Couches Iceberg (dessous)
+\node[box, fill=bronze!25, draw=bronze!70] (br)
+    at (3.5,-4.5) {Bronze\\{\tiny Iceberg}};
+\node[box, fill=argent!25, draw=argent!70] (sv)
+    at (7.8,-4.5) {Argent\\{\tiny Iceberg}};
+\node[box, fill=or!35, draw=or!80] (gd)
+    at (12.1,-4.5) {Or\\{\tiny Iceberg}};
+
+%% Requête & exposition
+\node[box, fill=trinoviolet!18, draw=trinoviolet!70] (tr)
+    at (7.8,-7) {Trino 435\\{\tiny SQL Distribué}};
+\node[box, fill=green!15, draw=green!60] (api)
+    at (4,-7) {FastAPI\\{\tiny REST + JWT}};
+\node[box, fill=cyan!15, draw=cyan!60] (fe)
+    at (11.5,-7) {React\\{\tiny Tableau de bord}};
+
+%% Flèches
+\draw[arr, blue!60]   (pg.east) -- ++(0.4,0) |- (dz.west)
+    node[pos=0.2, right, font=\tiny] {WAL};
+\draw[arr, red!60]    (dz.south) -- (kf.north)
+    node[midway, right, font=\tiny] {JSON};
+\draw[arr, red!70]    (kf.east) -- (sp.west)
+    node[midway, above, font=\tiny] {30 s batch};
+\draw[arr, orange!60] (sp.east) -- ++(0.3,0) |- (mn.west)
+    node[pos=0.3, above, font=\tiny] {Parquet};
+\draw[arr, purple!50] (hv.west) -| (sp.south east);
+\draw[arr, bronze!70] (sp.south) -- ++(0,-0.5) -| (br.north);
+\draw[arr, argent!70] (sp.south) -- (sv.north);
+\draw[arr, or!70]     (sp.south) -- ++(0,-0.5) -| (gd.north);
+\draw[arr, trinoviolet!60] (br.south) |- (tr.west);
+\draw[arr, trinoviolet!60] (sv.south) -- (tr.north);
+\draw[arr, trinoviolet!60] (gd.south) |- (tr.east);
+\draw[arr, green!60]  (tr.west) -- (api.east);
+\draw[arr, cyan!60]   (tr.east) -- (fe.west);
+\draw[arr, gray!50]   (api.north east) to[bend left=15] (fe.north west);
+\end{tikzpicture}
+\caption{Architecture globale du pipeline CDC Medallion (20 services)}
+\label{fig:archi}
+\end{figure}
+
+\section{Flux de données end-to-end}
+
+\begin{enumerate}
+    \item Une transaction PostgreSQL est validée (INSERT / UPDATE / DELETE).
+    \item Le moteur écrit l'opération dans le WAL (journal transactionnel).
+    \item Debezium lit le WAL via le slot de réplication logique et publie
+          un message JSON sur le topic Kafka correspondant~: latence~$<$~1~s.
+    \item Spark Structured Streaming consomme les 6 topics en micro-batches
+          de 30~secondes et écrit en mode \emph{append} dans la couche Bronze.
+    \item Un second job Spark lit la couche Bronze et applique un
+          \texttt{MERGE INTO} Iceberg pour mettre à jour la couche Argent
+          (micro-batch 60~s).
+    \item Un troisième job Spark agrège la couche Argent en 5 tables Or
+          (cycle de 5~minutes, réécriture de la partition du jour).
+    \item Trino expose les trois couches en SQL standard via le catalogue
+          \texttt{iceberg}, schéma \texttt{analytics}.
+    \item L'API FastAPI et le frontend React interrogent Trino pour
+          les KPI, les métriques et le statut des services.
+\end{enumerate}
+
+\section{Inventaire des services Docker}
+
+\begin{longtable}{llll}
+\caption{Inventaire des 20 services Docker Compose}
+\label{tab:services}\\
+\toprule
+\textbf{Service} & \textbf{Image} & \textbf{Version} & \textbf{Rôle} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{c}{\tablename\ \thetable{} --- suite}\\
+\toprule
+\textbf{Service} & \textbf{Image} & \textbf{Version} & \textbf{Rôle} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\itshape Suite page suivante}\\
+\endfoot
+\bottomrule
+\endlastfoot
+PostgreSQL      & postgres                                & 15       & SGBD source            \\
+Zookeeper       & confluentinc/cp-zookeeper               & 7.5.0    & Coordination Kafka     \\
+Kafka           & confluentinc/cp-kafka                   & 7.5.0    & Bus de messages        \\
+Kafka Connect   & debezium/connect                        & 2.5      & Connecteur CDC         \\
+MinIO           & minio/minio                             & 2024-01  & Stockage objet S3      \\
+MariaDB         & mariadb                                 & 10.11    & Backend Hive           \\
+Hive Metastore  & build ./hive                            & 3.1.3    & Catalogue de tables    \\
+Spark Master    & apache/spark                            & 3.5.3    & Orchestrateur Spark    \\
+Spark Worker    & apache/spark                            & 3.5.3    & Exécuteur Spark        \\
+Trino           & trinodb/trino                           & 435      & SQL distribué          \\
+Apache Superset & apache/superset                         & 3.1.0    & Visualisation BI       \\
+Prometheus      & prom/prometheus                         & 2.50.1   & Collecte métriques     \\
+Alertmanager    & prom/alertmanager                       & 0.27.0   & Gestion alertes        \\
+Grafana         & grafana/grafana                         & 10.3.3   & Dashboards             \\
+Loki            & grafana/loki                            & 2.9.4    & Indexation logs        \\
+Promtail        & grafana/promtail                        & 2.9.4    & Collecte logs          \\
+Kafka Exporter  & danielqsj/kafka-exporter                & latest   & Métriques Kafka        \\
+Postgres Exporter & prometheuscommunity/postgres-exporter & 0.15.0   & Métriques PostgreSQL   \\
+Backend API     & build ./api (Python 3.11)               & FastAPI  & API REST               \\
+Frontend        & node                                    & 20-alpine & Interface React       \\
+\end{longtable}
+
+Tous les services partagent le réseau Docker bridge \texttt{cdc-net}.
+Les données persistantes sont stockées dans 8 volumes Docker nommés :
+\texttt{postgres-data}, \texttt{minio-data}, \texttt{mariadb-data},
+\texttt{kafka-data}, \texttt{zookeeper-data}, \texttt{ivy2-cache},
+\texttt{prometheus-data} et \texttt{grafana-data}.
+
+%% ════════════════════════════════════════════════════════════
+\chapter{Implémentation du Pipeline de Données}
+%% ════════════════════════════════════════════════════════════
+
+\section{Schéma de la base de données source}
+
+La base PostgreSQL \texttt{ecommerce} modélise un système de commerce en
+ligne avec 6 tables interconnectées.
+
+\begin{table}[h]
+\centering
+\caption{Description des tables de la base source \texttt{ecommerce}}
+\label{tab:schema}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Table} & \textbf{Description} & \textbf{Colonnes clés} \\
+\midrule
+\texttt{customers}    & Profils clients (6 colonnes)
+    & id, email, city, segment \\
+\texttt{products}     & Catalogue produits (6 colonnes)
+    & id, category, brand, price \\
+\texttt{orders}       & Commandes passées (5 colonnes)
+    & id, customer\_id, status, channel \\
+\texttt{order\_items} & Lignes de commande (5 colonnes)
+    & order\_id, product\_id, quantity, unit\_price \\
+\texttt{payments}     & Transactions de paiement (6 colonnes)
+    & order\_id, method, amount, status \\
+\texttt{returns}      & Retours produits (5 colonnes)
+    & order\_id, reason, status \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Les champs énumérés incluent :
+\begin{itemize}
+    \item \texttt{segment} : B2B, B2C, Premium, Standard
+    \item \texttt{status} (commandes) : pending, confirmed, shipped, delivered,
+          cancelled, returned
+    \item \texttt{channel} : web, mobile, in-store, marketplace
+    \item \texttt{method} (paiements) : credit\_card, debit\_card,
+          cash\_on\_delivery, bank\_transfer, wallet
+\end{itemize}
+
+\section{Configuration de la réplication PostgreSQL}
+
+\begin{lstlisting}[language=SQL,
+    caption={Initialisation de la réplication logique (sql/init.sql)}]
+-- Activation dans postgresql.conf (via commande ALTER SYSTEM)
+ALTER SYSTEM SET wal_level = 'logical';
+ALTER SYSTEM SET max_wal_senders = 4;
+ALTER SYSTEM SET max_replication_slots = 4;
+
+-- Utilisateur Debezium avec privilège de réplication
+CREATE USER debezium WITH REPLICATION LOGIN
+    PASSWORD 'debezium_secure_pass';
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
+GRANT USAGE ON SCHEMA public TO debezium;
+
+-- Publication logique sur toutes les tables
+CREATE PUBLICATION debezium_pub FOR ALL TABLES;
+
+-- Slot de réplication (plugin natif PostgreSQL)
+SELECT pg_create_logical_replication_slot('debezium_slot', 'pgoutput');
+\end{lstlisting}
+
+\section{Connecteur Debezium}
+
+Le connecteur est enregistré via l'API REST de Kafka Connect~:
+
+\begin{lstlisting}[language={},
+    caption={Configuration du connecteur Debezium (config/debezium-connector.json)}]
+{
+  "name": "ecommerce-postgres-connector",
+  "config": {
+    "connector.class":
+        "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname":       "postgres",
+    "database.port":           "5432",
+    "database.user":           "debezium",
+    "database.dbname":         "ecommerce",
+    "database.server.name":    "cdc",
+    "plugin.name":             "pgoutput",
+    "publication.name":        "debezium_pub",
+    "slot.name":               "debezium_slot",
+    "snapshot.mode":           "initial",
+    "decimal.handling.mode":   "double",
+    "time.precision.mode":     "connect",
+    "tombstones.on.delete":    "false",
+    "heartbeat.interval.ms":   "10000"
+  }
+}
+\end{lstlisting}
+
+Le connecteur produit 6 topics Kafka :
+\texttt{cdc.public.customers}, \texttt{cdc.public.products},
+\texttt{cdc.public.orders}, \texttt{cdc.public.order\_items},
+\texttt{cdc.public.payments}, \texttt{cdc.public.returns}.
+
+\section{Couche Bronze --- Ingestion brute}
+
+Le job Bronze (\texttt{spark\_jobs/bronze\_job.py}, 173~lignes) consomme les
+6~topics Kafka et écrit dans des tables Iceberg en mode \textbf{append-only}.
+Chaque événement est conservé tel quel, sans transformation, garantissant
+l'auditabilité complète.
+
+\begin{table}[h]
+\centering
+\caption{Schéma des tables Bronze (colonnes principales)}
+\label{tab:bronze}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lll}
+\toprule
+\textbf{Colonne} & \textbf{Type Spark} & \textbf{Description} \\
+\midrule
+\texttt{kafka\_offset}       & BIGINT    & Offset du message Kafka \\
+\texttt{kafka\_topic}        & STRING    & Nom du topic source \\
+\texttt{kafka\_timestamp}    & TIMESTAMP & Heure de publication Kafka \\
+\texttt{op}                  & STRING    & Opération CDC : c / u / d / r \\
+\texttt{before\_payload}     & STRING    & JSON de l'état avant \\
+\texttt{after\_payload}      & STRING    & JSON de l'état après \\
+\texttt{source\_ts\_ms}      & BIGINT    & Horodatage WAL PostgreSQL \\
+\texttt{raw\_payload}        & STRING    & Message Debezium complet \\
+\texttt{ingestion\_timestamp}& TIMESTAMP & Heure d'ingestion Spark \\
+\texttt{ingestion\_date}     & DATE      & \textbf{Colonne de partition} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[language=Python,
+    caption={Extrait du job Bronze --- lecture Kafka et écriture Iceberg}]
+# Lecture des 6 topics Kafka
+df_kafka = (spark.readStream
+    .format("kafka")
+    .option("kafka.bootstrap.servers", "kafka:9092")
+    .option("subscribe", ",".join(CDC_TOPICS))
+    .option("startingOffsets", "earliest")
+    .option("maxOffsetsPerTrigger", 10_000)
+    .load())
+
+# Parsing du payload Debezium (JSON)
+df_parsed = df_kafka.select(
+    col("offset").alias("kafka_offset"),
+    col("topic").alias("kafka_topic"),
+    col("timestamp").alias("kafka_timestamp"),
+    get_json_object(col("value_str"), "$.op").alias("op"),
+    get_json_object(col("value_str"), "$.before").alias("before_payload"),
+    get_json_object(col("value_str"), "$.after").alias("after_payload"),
+    get_json_object(col("value_str"), "$.source.ts_ms")
+        .cast("long").alias("source_ts_ms"),
+    current_timestamp().alias("ingestion_timestamp"),
+    current_date().alias("ingestion_date"),
+)
+
+# Ecriture en streaming (append-only) dans Iceberg
+def write_bronze(batch_df, batch_id, table_name):
+    (batch_df.writeTo(f"iceberg.analytics.bronze_{table_name}_cdc")
+        .option("mergeSchema", "true")
+        .append())
+
+query = (df_parsed.writeStream
+    .foreachBatch(lambda df, bid: write_bronze(df, bid, table_name))
+    .trigger(processingTime="30 seconds")
+    .option("checkpointLocation",
+            f"s3a://warehouse/checkpoints/bronze/{table_name}")
+    .start())
+\end{lstlisting}
+
+\section{Couche Argent --- Déduplication et typage fort}
+
+Le job Argent (\texttt{spark\_jobs/silver\_job.py}, 247~lignes) lit en
+continu les tables Bronze et applique un \texttt{MERGE INTO} Iceberg pour
+maintenir l'état courant de chaque entité (micro-batch de 60~secondes).
+
+\subsection{Déduplication par fenêtre}
+
+\begin{lstlisting}[language=Python,
+    caption={Déduplication --- conservation de la dernière version par PK}]
+from pyspark.sql.window import Window
+from pyspark.sql.functions import row_number, desc
+
+# Pour chaque clé primaire, conserver uniquement
+# l'événement le plus récent (par source_ts_ms)
+window_spec = Window.partitionBy("id").orderBy(desc("_source_ts_ms"))
+
+df_dedup = (df_parsed
+    .withColumn("_rn", row_number().over(window_spec))
+    .filter(col("_rn") == 1)
+    .drop("_rn"))
+\end{lstlisting}
+
+\subsection{Opération MERGE INTO Iceberg}
+
+\begin{lstlisting}[language=Python,
+    caption={Upsert atomique Iceberg via MERGE INTO}]
+spark.sql(f"""
+    MERGE INTO iceberg.analytics.silver_{table} AS target
+    USING updates AS source
+    ON target.id = source.id
+    WHEN MATCHED AND source._is_deleted = true
+        THEN UPDATE SET
+            target._is_deleted = true,
+            target._updated_at  = current_timestamp()
+    WHEN MATCHED
+        THEN UPDATE SET *
+    WHEN NOT MATCHED AND source._is_deleted = false
+        THEN INSERT *
+""")
+\end{lstlisting}
+
+Les tables Argent ajoutent 4 colonnes de métadonnées à chaque ligne :
+\texttt{\_op}, \texttt{\_source\_ts\_ms}, \texttt{\_updated\_at},
+\texttt{\_is\_deleted}, ainsi qu'une colonne de partition \texttt{updated\_date}.
+
+\section{Couche Or --- Agrégats métier}
+
+Le job Or (\texttt{spark\_jobs/gold\_job.py}, 336~lignes) produit
+5~tables analytiques en agrégeant la couche Argent toutes les 5~minutes.
+
+\begin{table}[h]
+\centering
+\caption{Tables de la couche Or et leurs indicateurs}
+\label{tab:gold}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Table} & \textbf{Indicateurs produits} & \textbf{Granularité} \\
+\midrule
+\texttt{gold\_customers}
+    & Nombre de commandes, dépenses totales, première/dernière commande
+    & Par client \\
+\texttt{gold\_orders}
+    & Commande enrichie : client, paiement, retour, total
+    & Par commande \\
+\texttt{gold\_sales\_facts}
+    & Revenus bruts/nets, volumes vendus, taux d'annulation/retour
+    & Date $\times$ canal $\times$ segment $\times$ catégorie \\
+\texttt{gold\_payments\_summary}
+    & Nombre et montant par méthode de paiement
+    & Mois $\times$ méthode \\
+\texttt{gold\_returns\_summary}
+    & Nombre et taux de retour par raison
+    & Mois $\times$ raison \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{lstlisting}[language=Python,
+    caption={Agrégation des faits de vente --- gold\_sales\_facts}]
+gold_sales = (silver_orders
+    .join(silver_customers,   "customer_id", "left")
+    .join(
+        silver_order_items.join(silver_products, "product_id"),
+        "order_id", "left")
+    .groupBy("order_date", "channel", "customer_segment",
+             "product_category")
+    .agg(
+        count("order_id").alias("order_count"),
+        sum(when(col("status").isin("delivered", "shipped"),
+                 col("unit_price") * col("quantity"))
+           ).alias("gross_revenue"),
+        sum(when(col("status") == "returned",
+                 lit(1))).alias("returned_count"),
+        avg(col("unit_price") * col("quantity"))
+            .alias("avg_order_value"),
+    )
+    .withColumn("snapshot_date", current_date()))
+
+# Réécriture de la partition du jour (idempotent)
+(gold_sales.writeTo("iceberg.analytics.gold_sales_facts")
+    .option("partitionOverwriteMode", "dynamic")
+    .overwritePartitions())
+\end{lstlisting}
+
+\section{Configuration Iceberg et connexion S3A/MinIO}
+
+\begin{lstlisting}[caption={spark-defaults.conf --- Catalogue Iceberg sur Hive + MinIO}]
+# Extensions Iceberg pour Spark SQL
+spark.sql.extensions=\
+    org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+
+# Catalogue Iceberg (type Hive, métastore MariaDB)
+spark.sql.catalog.iceberg=org.apache.iceberg.spark.SparkCatalog
+spark.sql.catalog.iceberg.type=hive
+spark.sql.catalog.iceberg.uri=thrift://hive-metastore:9083
+spark.sql.catalog.iceberg.warehouse=s3a://warehouse/
+spark.sql.defaultCatalog=iceberg
+
+# Connexion MinIO via protocole S3A
+spark.hadoop.fs.s3a.endpoint=http://minio:9000
+spark.hadoop.fs.s3a.path.style.access=true
+spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+spark.hadoop.fs.s3a.connection.ssl.enabled=false
+\end{lstlisting}
+
+\section{Requêtes KPI via Trino}
+
+Trino expose les trois couches sous le catalogue \texttt{iceberg},
+schéma \texttt{analytics}. Exemples de requêtes analytiques :
+
+\begin{lstlisting}[language=SQL,
+    caption={KPI analytiques exécutés via Trino 435}]
+-- Revenus par canal (14 derniers jours)
+SELECT   channel,
+         SUM(gross_revenue) AS revenu_brut,
+         SUM(net_revenue)   AS revenu_net
+FROM     iceberg.analytics.gold_sales_facts
+WHERE    sale_date >= current_date - INTERVAL '14' DAY
+GROUP BY channel
+ORDER BY revenu_brut DESC;
+
+-- Mix des méthodes de paiement (mois courant)
+SELECT   method AS methode,
+         SUM(transaction_count) AS nb_transactions,
+         ROUND(SUM(total_amount), 2) AS montant_total
+FROM     iceberg.analytics.gold_payments_summary
+WHERE    payment_month = FORMAT_DATETIME(NOW(), 'yyyy-MM')
+GROUP BY method;
+
+-- Latence CDC end-to-end (percentile 95) -- couche Bronze
+SELECT   source_table,
+         ROUND(
+           approx_percentile(
+             (to_unixtime(ingestion_timestamp)*1000 - source_ts_ms)/1000.0,
+             0.95),
+         2) AS latence_p95_secondes
+FROM     iceberg.analytics.bronze_orders_cdc
+GROUP BY source_table;
+\end{lstlisting}
+
+%% ════════════════════════════════════════════════════════════
+\chapter{API REST, Interface Utilisateur et Monitoring}
+%% ════════════════════════════════════════════════════════════
+
+\section{API REST --- FastAPI}
+
+L'API REST est développée avec \textbf{FastAPI~0.110+} et Uvicorn,
+en Python~3.11, exposée sur le port 8000.
+
+\subsection{Authentification par token JWT}
+
+À la connexion, le serveur émet un token JWT signé (algorithme HS256,
+validité 60~minutes). Ce token est transmis dans le header
+\texttt{Authorization:~Bearer~<token>} pour toutes les requêtes protégées.
+
+\subsection{Endpoints}
+
+\begin{table}[h]
+\centering
+\caption{Endpoints de l'API REST}
+\label{tab:api}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{llXl}
+\toprule
+\textbf{Méthode} & \textbf{Endpoint} & \textbf{Description} & \textbf{Auth} \\
+\midrule
+POST  & \texttt{/auth/login}
+    & Connexion, retourne un JWT & Non \\
+GET   & \texttt{/auth/me}
+    & Profil de l'utilisateur connecté & Oui \\
+GET   & \texttt{/api/health}
+    & Statut et latence des 5 services & Non \\
+GET   & \texttt{/api/metrics/\{layer\}}
+    & Comptage de lignes par table Iceberg & Oui \\
+POST  & \texttt{/api/query}
+    & SQL SELECT vers Trino, réponse NDJSON & Oui \\
+GET   & \texttt{/api/alerts}
+    & Liste des alertes pipeline & Oui \\
+PATCH & \texttt{/api/alerts/\{id\}/ack}
+    & Acquittement d'alerte & Admin \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Sécurisation des requêtes SQL}
+
+L'endpoint \texttt{/api/query} valide le SQL avant transmission à Trino :
+toute instruction de modification (\texttt{DROP}, \texttt{CREATE},
+\texttt{INSERT}, \texttt{UPDATE}, \texttt{DELETE}, \texttt{ALTER},
+\texttt{TRUNCATE}, \texttt{GRANT}, \texttt{MERGE}) déclenche une erreur
+HTTP~400. Seuls les \texttt{SELECT} sont autorisés.
+
+\subsection{Streaming NDJSON}
+
+Les résultats volumineux sont renvoyés en \textit{Newline-Delimited JSON}
+via \texttt{StreamingResponse}, évitant de charger toute la réponse en mémoire.
+
+\begin{lstlisting}[language=Python,
+    caption={Endpoint /api/query --- streaming NDJSON}]
+@router.post("/query")
+async def run_query(body: QueryRequest,
+                    user: User = Depends(get_current_user)):
+    validate_read_only_sql(body.sql)    # Bloque DDL/DML
+
+    async def row_generator():
+        async for row in trino_client.query_stream(body.sql):
+            yield json.dumps(row, default=str) + "\n"
+
+    return StreamingResponse(row_generator(),
+                             media_type="application/x-ndjson")
+\end{lstlisting}
+
+\section{Interface Utilisateur React}
+
+Le frontend est une application monopage développée en React~18 avec
+TypeScript, Vite et Tailwind CSS, organisée en 4 vues :
+
+\begin{table}[h]
+\centering
+\caption{Pages de l'interface utilisateur}
+\label{tab:pages}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\linewidth}{lXl}
+\toprule
+\textbf{Page} & \textbf{Contenu} & \textbf{Rafraîchissement} \\
+\midrule
+Pipeline Health
+    & Statut (UP/DOWN) et latence en ms de chaque service
+      avec barres de progression colorées
+    & Auto 10 s \\
+Data Layers
+    & Comptage de lignes et barres de volume pour les 3 couches
+      Bronze / Argent / Or
+    & Manuel \\
+KPI Dashboard
+    & Revenus (zone), canaux (barres), paiements (camembert),
+      segments, catégories (Recharts)
+    & Au chargement \\
+Overview
+    & Topologie du pipeline en temps réel, statut santé
+      par nœud, résumé Medallion
+    & Manuel \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Monitoring et Observabilité}
+
+La stack de supervision repose sur quatre composants :
+
+\begin{itemize}
+    \item \textbf{Prometheus} (port~9090) : collecte toutes les 15~secondes
+          les métriques de Kafka, PostgreSQL, MinIO, Spark et de l'API.
+    \item \textbf{Grafana} (port~3001) : dashboards préconfigurés pour
+          visualiser les métriques Prometheus et les logs Loki.
+    \item \textbf{Loki + Promtail} : agrégation et indexation des logs Docker
+          de tous les services.
+    \item \textbf{Alertmanager} (port~9093) : envoi d'alertes (Slack ou e-mail)
+          lorsqu'un seuil est dépassé.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Règles d'alerte Prometheus configurées}
+\label{tab:alerts}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\toprule
+\textbf{Condition} & \textbf{Seuil} \\
+\midrule
+Lag consommateur Kafka & $>$ 10\,000 messages en retard \\
+Latence couche Bronze & $>$ 120 s \\
+Disponibilité des services & $<$ 100\,\% \\
+Espace disque MinIO & $>$ 80\,\% \\
+Taux d'erreur API & $>$ 5\,\% sur 1 minute \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════
+\chapter{Déploiement et Résultats}
+%% ════════════════════════════════════════════════════════════
+
+\section{Environnement de déploiement}
+
+\begin{table}[h]
+\centering
+\caption{Spécifications de la machine virtuelle Oracle Cloud}
+\label{tab:vm}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{ll}
+\toprule
+\textbf{Paramètre}       & \textbf{Valeur} \\
+\midrule
+Fournisseur              & Oracle Cloud Infrastructure (OCI) \\
+Système d'exploitation   & Ubuntu 22.04 LTS \\
+RAM totale               & 11,67 Go \\
+vCPU                     & 4 \\
+Stockage                 & 50 Go (SSD) \\
+Orchestration            & Docker Compose v2 (20 services) \\
+Dépôt source             & GitHub (git pull \& restart) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Gestion de la mémoire}
+
+La contrainte principale est la coexistence de plusieurs processus JVM
+lourds sur une VM de 11,67~Go. La configuration initiale provoquait
+2,6~Go de swap, multipliant les temps de réponse par 5 à 10.
+
+\begin{table}[h]
+\centering
+\caption{Limites mémoire par service après optimisation}
+\label{tab:memory}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Service} & \textbf{Limite conteneur} & \textbf{Paramètre JVM} \\
+\midrule
+Trino           & 3,0 Go  & \texttt{-Xmx2G -XX:ReservedCodeCacheSize=256M} \\
+Spark Worker    & 1,5 Go  & \texttt{SPARK\_WORKER\_MEMORY=1g}               \\
+Kafka           & 768 Mo  & \texttt{KAFKA\_HEAP\_OPTS=-Xmx512M}             \\
+Kafka Connect   & 640 Mo  & Paramètre par défaut Debezium                  \\
+Hive Metastore  & 700 Mo  & Paramètre par défaut Hive                      \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Le problème Trino résultait d'une contrainte Iceberg : la somme de
+\texttt{query.max-memory-per-node} et de \texttt{memory.heap-headroom-per-node}
+doit être strictement inférieure à la taille du heap JVM (\texttt{-Xmx}).
+La configuration finale retenue :
+
+\begin{lstlisting}[caption={config/trino/config.properties --- limites mémoire}]
+query.max-memory=2GB
+query.max-memory-per-node=1GB
+memory.heap-headroom-per-node=256MB
+# Contrainte : 1 Go + 256 Mo = 1,25 Go < 2 Go (Xmx) => valide
+\end{lstlisting}
+
+\section{Séquence de démarrage}
+
+\begin{table}[h]
+\centering
+\caption{Phases de démarrage du pipeline (premier lancement)}
+\label{tab:startup}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Phase} & \textbf{Durée estimée} & \textbf{Événement} \\
+\midrule
+Démarrage conteneurs   & 1 -- 2 min    & Health checks Docker passés     \\
+Init Hive Metastore    & 1 -- 2 min    & Schéma MariaDB créé             \\
+Démarrage Trino        & 30 -- 60 s    & Moteur SQL prêt                 \\
+Téléchargement JARs    & 2 -- 5 min    & Iceberg / Kafka / S3A (Maven)   \\
+Snapshot Debezium      & 20 -- 30 s    & Lecture initiale de la DB       \\
+Job Bronze actif       & 30 s          & Premiers micro-batches          \\
+Job Argent actif       & 60 s          & Premier MERGE INTO              \\
+Job Or actif           & 5 min         & Première agrégation             \\
+\midrule
+\textbf{Total}         & \textbf{8 -- 15 min} & \textbf{Pipeline opérationnel} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Résultats et métriques de performance}
+
+\subsection{Latences mesurées}
+
+\begin{table}[h]
+\centering
+\caption{Latences end-to-end après optimisation}
+\label{tab:latency}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Étape} & \textbf{Latence mesurée} & \textbf{Objectif initial} \\
+\midrule
+PostgreSQL WAL $\to$ Kafka    & $<$ 1 s        & $<$ 5 s    \\
+Kafka $\to$ Bronze (Iceberg)  & 15 -- 30 s     & $<$ 60 s   \\
+Bronze $\to$ Argent (MERGE)   & 30 -- 60 s     & $<$ 120 s  \\
+Argent $\to$ Or (agrégation)  & 3 -- 5 min     & $<$ 10 min \\
+\textbf{End-to-end total}     & \textbf{4 -- 7 min} & \textbf{$<$ 15 min} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Données traitées}
+
+\begin{itemize}
+    \item \textbf{6 tables source} avec $\approx$100 lignes initiales par table
+          (chargées par \texttt{sql/seed.sql}).
+    \item \textbf{600 événements Kafka} au snapshot initial, puis flux continu
+          généré par le script \texttt{scripts/simulate\_changes.sh}.
+    \item \textbf{Couche Bronze} : 6 tables Iceberg partitionnées par
+          \texttt{ingestion\_date}.
+    \item \textbf{Couche Argent} : 6 tables avec état courant dédupliqué,
+          partitionnées par \texttt{updated\_date}.
+    \item \textbf{Couche Or} : 5 tables agrégées prêtes pour les requêtes
+          analytiques, partitionnées par \texttt{snapshot\_date}.
+\end{itemize}
+
+\subsection{Interface opérationnelle}
+
+L'interface React déployée offre une vision temps réel du pipeline :
+\begin{itemize}
+    \item Statut animé (ping vert / amber) de chaque service avec latence
+          en milliseconde.
+    \item Comptage de lignes par table pour les trois couches avec barres
+          de volume normalisées.
+    \item Graphiques de KPI : revenus sur 14~jours, répartition par canal,
+          mix de paiements, performance par segment client.
+    \item Topologie du pipeline avec état de santé en temps réel de chaque
+          nœud (PostgreSQL $\to$ Debezium $\to$ Kafka $\to$ Spark $\to$
+          MinIO $\to$ Bronze $\to$ Argent $\to$ Or).
+\end{itemize}
+
+%% ════════════════════════════════════════════════════════════
+\chapter{Conclusion et Perspectives}
+%% ════════════════════════════════════════════════════════════
+
+\section{Bilan}
+
+Ce projet démontre qu'il est possible d'implémenter un pipeline CDC
+professionnel --- complet, opérationnel et reproductible --- sur une
+infrastructure mono-machine à faible coût. Les principaux acquis sont :
+
+\begin{enumerate}
+    \item \textbf{Maîtrise du CDC par lecture de log} : compréhension du WAL
+          PostgreSQL, de la réplication logique et de son intégration avec
+          Debezium et Kafka.
+
+    \item \textbf{Architecture Medallion} : conception des trois couches avec
+          compromis explicites entre latence, fiabilité et richesse sémantique.
+
+    \item \textbf{Spark Structured Streaming} : utilisation avancée des
+          micro-batches, du \texttt{MERGE INTO} Iceberg et de la gestion des
+          checkpoints pour la tolérance aux pannes.
+
+    \item \textbf{Gestion JVM en production} : interactions complexes entre
+          heap JVM, CodeCache et limites de conteneurs Docker --- problème réel
+          rencontré et résolu lors du déploiement.
+
+    \item \textbf{Observabilité complète} : stack Prometheus + Grafana + Loki
+          pour les métriques, dashboards et logs de 20 services.
+
+    \item \textbf{API et interface} : exposition sécurisée des données via
+          FastAPI (JWT, streaming NDJSON) et tableau de bord React temps réel.
+\end{enumerate}
+
+\section{Difficultés rencontrées}
+
+\begin{itemize}
+    \item \textbf{Pression mémoire} : la cohabitation de plusieurs JVM lourds
+          (Trino, Spark, Kafka) sur 11,67~Go a causé 2,6~Go de swap, dégradant
+          fortement les performances. Solution : réduction fine des paramètres
+          \texttt{-Xmx}, \texttt{ReservedCodeCacheSize} et des limites
+          \texttt{query.max-memory-per-node}.
+
+    \item \textbf{Démarrage ordonné} : les dépendances entre services (Kafka
+          avant Debezium, Hive Metastore avant Spark et Trino) nécessitent des
+          health checks Docker précis et des scripts de vérification.
+
+    \item \textbf{Compatibilité des versions} : la combinaison Spark~3.5.3 +
+          Iceberg~1.5.2 + Hadoop AWS~3.3.4 + AWS SDK~1.12.262 a demandé un
+          alignement précis des versions pour éviter les conflits de classpath.
+
+    \item \textbf{Téléchargement des JARs} : le premier démarrage de Spark
+          télécharge $\approx$500~Mo de dépendances Maven. Un volume partagé
+          \texttt{ivy2-cache} a été ajouté pour éviter ce téléchargement à
+          chaque redémarrage.
+\end{itemize}
+
+\section{Perspectives d'amélioration}
+
+\begin{enumerate}
+    \item \textbf{Déploiement Kubernetes} : migration vers un cluster K8s
+          (manifestes et charts Helm déjà présents dans \texttt{k8s/} et
+          \texttt{helm/}) pour la scalabilité horizontale et la haute
+          disponibilité.
+
+    \item \textbf{Optimisation Iceberg v2} : utilisation des suppressions au
+          niveau ligne (\textit{position deletes}) et du \textit{z-ordering}
+          pour accélérer les requêtes analytiques sur les grandes tables Or.
+
+    \item \textbf{Qualité des données} : intégration d'un framework de
+          validation (Great Expectations, dbt) entre les couches Argent et Or
+          pour détecter les anomalies dès leur apparition.
+
+    \item \textbf{Machine Learning} : exposition de la couche Or à MLflow pour
+          construire des modèles prédictifs (churn client, détection de fraude,
+          recommandation de produits).
+
+    \item \textbf{Multi-sources} : extension à d'autres bases (MySQL, MongoDB)
+          via des connecteurs Debezium supplémentaires, avec union des schémas
+          dans la couche Argent.
+
+    \item \textbf{Alerting métier} : règles d'alerte directement sur les KPI
+          Or (baisse du taux de conversion, pic de retours, dérive des revenus).
+\end{enumerate}
+
+%% ════════════════════════════════════════════════════════════
+%% Bibliographie
+%% ════════════════════════════════════════════════════════════
+\begin{thebibliography}{99}
+
+\bibitem{debezium}
+Debezium Authors,
+\textit{Debezium Documentation --- PostgreSQL Connector},
+\url{https://debezium.io/documentation/reference/stable/connectors/postgresql.html},
+2024.
+
+\bibitem{iceberg}
+Apache Iceberg PMC,
+\textit{Apache Iceberg --- The Open Table Format for Analytic Datasets},
+\url{https://iceberg.apache.org/docs/latest/},
+2024.
+
+\bibitem{spark}
+Apache Spark PMC,
+\textit{Structured Streaming Programming Guide},
+\url{https://spark.apache.org/docs/3.5.3/structured-streaming-programming-guide.html},
+2024.
+
+\bibitem{trino}
+Trino Foundation,
+\textit{Trino --- Distributed SQL Query Engine},
+\url{https://trino.io/docs/current/},
+2024.
+
+\bibitem{kafka}
+Apache Kafka PMC,
+\textit{Apache Kafka Documentation},
+\url{https://kafka.apache.org/documentation/},
+2024.
+
+\bibitem{medallion}
+Databricks,
+\textit{What is the Medallion Lakehouse Architecture?},
+\url{https://www.databricks.com/glossary/medallion-architecture},
+2024.
+
+\bibitem{fastapi}
+S. Ramírez,
+\textit{FastAPI --- Modern, Fast Web Framework for Building APIs with Python},
+\url{https://fastapi.tiangolo.com/},
+2024.
+
+\bibitem{prometheus}
+Prometheus Authors,
+\textit{Prometheus --- Monitoring System and Time Series Database},
+\url{https://prometheus.io/docs/introduction/overview/},
+2024.
+
+\bibitem{kleppmann}
+M. Kleppmann,
+\textit{Designing Data-Intensive Applications},
+O'Reilly Media, 2017, ch.~11, pp.~453--490.
+
+\bibitem{minio}
+MinIO Inc.,
+\textit{MinIO Object Storage Documentation},
+\url{https://min.io/docs/minio/linux/index.html},
+2024.
+
+\end{thebibliography}
+
+%% ════════════════════════════════════════════════════════════
+%% Annexes
+%% ════════════════════════════════════════════════════════════
+\appendix
+
+\chapter{Commandes de démarrage}
+
+\begin{lstlisting}[language=bash,
+    caption={Démarrage complet du pipeline CDC Medallion}]
+# 1. Cloner le dépôt
+git clone https://github.com/Elghouali/cdc-pipeline-bigdata.git
+cd cdc-pipeline-bigdata
+
+# 2. Configurer l'environnement
+cp .env.example .env
+# Éditer .env : mots de passe, secrets JWT, etc.
+
+# 3. Démarrer tous les services Docker (20 conteneurs)
+docker compose up -d
+
+# 4. Vérifier l'état des services
+docker compose ps
+
+# 5. Enregistrer le connecteur Debezium (après ~60 s)
+bash scripts/register_connector.sh
+
+# 6. Lancer les trois jobs Spark Structured Streaming
+for job in bronze_job silver_job gold_job; do
+    docker exec -d cdc-spark-master \
+        /opt/spark/bin/spark-submit \
+        --master spark://spark-master:7077 \
+        --conf spark.cores.max=2 \
+        /opt/spark-apps/${job}.py
+done
+
+# 7. Simuler des modifications de données en continu
+bash scripts/simulate_changes.sh
+
+# 8. Accéder à l'interface web (http://<IP>:3000)
+# Identifiants : admin / <valeur API_ADMIN_PASSWORD dans .env>
+\end{lstlisting}
+
+\chapter{Arborescence du projet}
+
+\begin{lstlisting}[caption={Structure du dépôt cdc-pipeline-bigdata}]
+cdc-pipeline/
+├── api/                        # API REST FastAPI (Python 3.11)
+│   ├── main.py                 # Point d'entrée, lifespan, CORS
+│   ├── auth.py                 # JWT : émission et vérification
+│   ├── trino_client.py         # Client Trino asynchrone (httpx)
+│   ├── db.py                   # Pool AsyncPG, users, alerts
+│   ├── routers/                # 7 modules d'endpoints
+│   │   ├── health.py           # GET /api/health
+│   │   ├── query.py            # POST /api/query (NDJSON)
+│   │   ├── metrics.py          # GET /api/metrics/{layer}
+│   │   ├── alerts.py           # GET/PATCH /api/alerts
+│   │   ├── events.py           # Kafka events
+│   │   ├── connector.py        # Debezium management
+│   │   └── spark.py            # Spark job monitoring
+│   └── Dockerfile
+├── config/
+│   ├── debezium-connector.json # Configuration connecteur CDC
+│   ├── hive/hive-site.xml      # Metastore + S3A
+│   ├── spark/spark-defaults.conf  # Iceberg + S3A + JARs
+│   └── trino/
+│       ├── config.properties   # Mémoire, port, discovery
+│       ├── jvm.config          # -Xmx2G, GC, CodeCache
+│       └── catalog/iceberg.properties
+├── frontend/                   # React 18 + TypeScript + Tailwind
+├── monitoring/                 # Prometheus, Grafana, Loki
+├── spark_jobs/
+│   ├── bronze_job.py           # 173 lignes : Kafka → Bronze
+│   ├── silver_job.py           # 247 lignes : Bronze → Argent
+│   └── gold_job.py             # 336 lignes : Argent → Or
+├── sql/
+│   ├── init.sql                # DDL, réplication, Debezium user
+│   └── seed.sql                # Données initiales (~100 lignes)
+├── scripts/                    # Automatisation opérationnelle
+├── k8s/                        # Manifestes Kubernetes
+├── helm/                       # Charts Helm
+└── docker-compose.yml          # 20 services, réseau cdc-net
+\end{lstlisting}
+
+\chapter{Glossaire}
+
+\begin{description}[style=nextline, leftmargin=4cm]
+    \item[CDC]
+        \textit{Change Data Capture} --- technique de capture des
+        modifications d'une base relationnelle en temps réel.
+
+    \item[WAL]
+        \textit{Write-Ahead Log} --- journal transactionnel de PostgreSQL
+        utilisé pour la réplication logique.
+
+    \item[Iceberg]
+        Format de table analytique ouvert garantissant les propriétés ACID,
+        l'évolution de schéma et le time-travel.
+
+    \item[Lakehouse]
+        Architecture combinant la flexibilité d'un \textit{data lake}
+        (stockage objet bas coût) avec les garanties ACID d'un entrepôt.
+
+    \item[Medallion]
+        Architecture en trois couches (Bronze / Argent / Or) de qualité
+        croissante.
+
+    \item[Micro-batch]
+        Modèle de traitement de flux où les données sont traitées par
+        petits intervalles de temps réguliers (30 s, 60 s...).
+
+    \item[MERGE INTO]
+        Instruction SQL combinant INSERT, UPDATE et DELETE en une seule
+        opération atomique --- clé de la couche Argent.
+
+    \item[NDJSON]
+        \textit{Newline-Delimited JSON} --- format de streaming de données
+        JSON, une ligne par objet.
+
+    \item[JWT]
+        \textit{JSON Web Token} --- standard d'authentification par token
+        signé numériquement.
+
+    \item[KPI]
+        \textit{Key Performance Indicator} --- indicateur clé de performance
+        métier.
+
+    \item[Trino]
+        Moteur de requête SQL distribué, successeur de Presto, capable
+        d'interroger plusieurs sources de données hétérogènes.
+
+    \item[S3A]
+        Implémentation Hadoop du protocole Amazon S3 permettant à Spark
+        d'accéder à MinIO comme à un stockage objet natif.
+
+    \item[pgoutput]
+        Plugin de sortie logique natif PostgreSQL, utilisé par Debezium
+        pour décoder les changements WAL sans extension tierce.
+\end{description}
+
+\end{document}

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Activity, Code2, Database, LayoutDashboard, LogOut, Radio, Workflow } from 'lucide-react';
+import { Code2, Database, LayoutDashboard, LogOut, Radio, Workflow } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -26,11 +26,12 @@ const PIPELINE: PipelineNode[] = [
 ];
 
 const NAV = [
-  { to: '/health',    icon: Activity,        label: 'Pipeline Health' },
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview'        },
-  { to: '/metrics',   icon: Database,        label: 'Data Layers'     },
-  { to: '/stats',     icon: Radio,           label: 'Event Stream'    },
-  { to: '/query',     icon: Code2,           label: 'Query Console'   },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview'      },
+  { to: '/bronze',    icon: Database,        label: 'Bronze Layer'  },
+  { to: '/silver',    icon: Database,        label: 'Silver Layer'  },
+  { to: '/gold',      icon: Database,        label: 'Gold Layer'    },
+  { to: '/query',     icon: Code2,           label: 'Query Console' },
+  { to: '/stream',    icon: Radio,           label: 'Event Stream'  },
 ];
 
 export function Sidebar() {
@@ -82,8 +83,8 @@ export function Sidebar() {
       <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
 
         {/* Pipeline topology */}
-        <div className="px-4 pt-4 pb-2">
-          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Pipeline</p>
+        <div className="px-4 my-4">
+          <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Pipeline</p>
           <div className="relative">
             {PIPELINE.map((node, idx) => {
               const health = node.serviceKey ? healthMap[node.serviceKey] : null;
@@ -149,15 +150,15 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
-        <div className="border-t border-[--border] px-3 pt-4 pb-2">
-          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Views</p>
-          <nav className="space-y-0.5">
+        <div className="border-t border-[--border] px-4 my-4 pt-4">
+          <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Views</p>
+          <nav className="space-y-1">
             {NAV.map(({ to, icon: Icon, label }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) => cn(
-                  'group flex items-center gap-2.5 rounded-md px-2 py-2 text-[13px] font-medium transition-colors',
+                  'group flex items-center gap-2.5 rounded-md px-4 py-3 text-[13px] font-medium transition-colors',
                   isActive
                     ? 'bg-[--bg-elevated] text-[--text-primary]'
                     : 'text-[--text-muted] hover:bg-[--bg-elevated] hover:text-[--text-primary]',

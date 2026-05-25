@@ -96,7 +96,7 @@ function KpiTile({ label, value, unit, delta, trend, sparkData }: {
     : formatNumber(displayed);
 
   return (
-    <div className="rounded-lg border border-[--border] bg-[--bg-surface] p-5">
+    <div className="rounded-lg border border-[--border] bg-[--bg-surface] p-6">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-muted]">{label}</p>
       <div className="flex items-end justify-between gap-3">
         <div>
@@ -156,10 +156,10 @@ function LayerCard({ layer, data }: { layer: Layer; data: MetricsResponse | unde
 
   return (
     <div
-      className="rounded-lg border bg-[--bg-surface] p-4"
+      className="rounded-lg border bg-[--bg-surface] p-5"
       style={{ borderColor: `${cfg.color}30`, borderLeftWidth: 3, borderLeftColor: cfg.color }}
     >
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: cfg.color }}>
           {cfg.label}
         </span>
@@ -247,7 +247,7 @@ export function DashboardPage() {
   }, []);
 
   return (
-    <div className="page-enter p-6 space-y-4">
+    <div className="page-enter p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -308,14 +308,14 @@ export function DashboardPage() {
                   <div
                     key={ev.id}
                     className={cn(
-                      'grid grid-cols-[120px_70px_140px_1fr] items-center border-b border-[--border-subtle] px-4 py-2 transition-colors hover:bg-[--bg-elevated] last:border-0',
+                      'flex items-center gap-2 border-b border-[--border-subtle] px-3 py-2 transition-colors hover:bg-[--bg-elevated] last:border-0',
                       idx === 0 && 'event-enter'
                     )}
                   >
-                    <span className="font-mono text-[11px] text-[--text-dim]">{ev.ts}</span>
-                    <Badge variant={s.badge}>{ev.op}</Badge>
-                    <span className="font-mono text-[11px] text-[--text-muted]">{ev.table}</span>
-                    <span className="truncate font-mono text-[11px] text-[--text-dim]">{ev.payload}</span>
+                    <span className="w-[120px] shrink-0 font-mono text-[11px] text-[--text-dim]">{ev.ts}</span>
+                    <div className="w-[70px] shrink-0"><Badge variant={s.badge}>{ev.op}</Badge></div>
+                    <span className="w-[140px] shrink-0 pl-0.5 font-mono text-[11px] text-[--text-muted]">{ev.table}</span>
+                    <span className="truncate pl-0.5 font-mono text-[11px] text-[--text-dim]">{ev.payload}</span>
                   </div>
                 );
               })}
@@ -335,9 +335,9 @@ export function DashboardPage() {
             return (
               <div
                 key={key}
-                className="rounded-lg border border-[--border] bg-[--bg-surface] p-4"
+                className="rounded-lg border border-[--border] bg-[--bg-surface] p-5"
               >
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between">
                   <span className="text-[11px] font-semibold text-[--text-primary]">{meta.label}</span>
                   <span
                     className="h-2 w-2 rounded-full"

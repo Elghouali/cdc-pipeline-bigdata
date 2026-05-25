@@ -82,7 +82,7 @@ async def health() -> list[HealthItem]:
         _check_http(
             "kafka-connect", f"{settings.kafka_connect_url}/connectors", {200}
         ),
-        _check_http("spark-master", f"{settings.spark_master_url}/json", {200}),
+        _check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302}),
         _check_http("minio", _MINIO_HEALTH_URL, {200}),
         _check_postgres(),
     )

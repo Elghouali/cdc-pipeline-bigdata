@@ -16,10 +16,10 @@ const LAYER_META: Record<Layer, { label: string; desc: string }> = {
   gold:   { label: 'Gold',   desc: 'Business-level aggregated facts'         },
 };
 
-const layerDot: Record<Layer, string> = {
-  bronze: 'bg-amber-400',
-  silver: 'bg-cyan-400',
-  gold:   'bg-emerald-400',
+const LAYER_STYLE: Record<Layer, { dot: string; bar: string; text: string }> = {
+  bronze: { dot: 'bg-amber-400',   bar: 'bg-amber-400',   text: 'text-amber-400'   },
+  silver: { dot: 'bg-cyan-400',    bar: 'bg-cyan-400',    text: 'text-cyan-400'    },
+  gold:   { dot: 'bg-emerald-400', bar: 'bg-emerald-400', text: 'text-emerald-400' },
 };
 
 export function MetricsPage() {
@@ -50,6 +50,11 @@ export function MetricsPage() {
 
   const current = data[activeLayer];
   const meta = LAYER_META[activeLayer];
+  const style = LAYER_STYLE[activeLayer];
+
+  const totalRows = current?.tables.reduce((s, t) => s + (t.row_count ?? 0), 0) ?? 0;
+  const okCount = current?.tables.filter(t => !t.error).length ?? 0;
+  const maxRows = Math.max(...(current?.tables.map(t => t.row_count ?? 0) ?? [1]), 1);
 
   return (
     <div className="p-6">
@@ -77,7 +82,7 @@ export function MetricsPage() {
             size="sm"
             onClick={() => setActiveLayer(layer)}
           >
-            <span className={`h-2 w-2 rounded-full ${layerDot[layer]}`} />
+            <span className={`h-2 w-2 rounded-full ${LAYER_STYLE[layer].dot}`} />
             {LAYER_META[layer].label}
           </Button>
         ))}
@@ -93,11 +98,25 @@ export function MetricsPage() {
 
       {!loading && !error && current && (
         <>
+          {/* Summary stats */}
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-[--border] bg-[--bg-surface] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[--text-muted]">Total Rows</p>
+              <p className={`mt-1 font-mono text-xl font-bold ${style.text}`}>{formatNumber(totalRows)}</p>
+            </div>
+            <div className="rounded-lg border border-[--border] bg-[--bg-surface] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[--text-muted]">Tables OK</p>
+              <p className={`mt-1 font-mono text-xl font-bold ${style.text}`}>{okCount}/{current.tables.length}</p>
+            </div>
+            <div className="rounded-lg border border-[--border] bg-[--bg-surface] px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-[--text-muted]">Updated</p>
+              <p className="mt-1 font-mono text-xl font-bold text-[--text-secondary]">{formatRelativeTime(current.generated_at)}</p>
+            </div>
+          </div>
+
           <div className="mb-3 flex items-center gap-3 text-xs text-[--text-muted]">
             <Server className="h-3.5 w-3.5" />
             <span>{current.tables.length} tables</span>
-            <span>·</span>
-            <span>Updated {formatRelativeTime(current.generated_at)}</span>
             {current.cached && <Badge variant="muted">Cached</Badge>}
           </div>
 
@@ -105,11 +124,8 @@ export function MetricsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[--border] bg-[--bg-elevated]">
-                  {['Table', 'Row Count', 'Latest Partition', 'Status'].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[--text-muted] last:text-left"
-                    >
+                  {['Table', 'Rows', 'Volume', 'Latest Partition', 'Status'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[--text-muted]">
                       {h}
                     </th>
                   ))}
@@ -117,7 +133,7 @@ export function MetricsPage() {
               </thead>
               <tbody>
                 {current.tables.map((t, i) => (
-                  <TableRow key={t.table} metric={t} layer={activeLayer} stripe={i % 2 === 1} />
+                  <TableRow key={t.table} metric={t} layer={activeLayer} stripe={i % 2 === 1} maxRows={maxRows} />
                 ))}
               </tbody>
             </table>
@@ -128,27 +144,28 @@ export function MetricsPage() {
   );
 }
 
-function TableRow({
-  metric,
-  layer,
-  stripe,
-}: {
-  metric: TableMetric;
-  layer: Layer;
-  stripe: boolean;
+function TableRow({ metric, layer, stripe, maxRows }: {
+  metric: TableMetric; layer: Layer; stripe: boolean; maxRows: number;
 }) {
   const hasError = !!metric.error;
+  const style = LAYER_STYLE[layer];
+  const pct = hasError ? 0 : Math.max(((metric.row_count ?? 0) / maxRows) * 100, metric.row_count ? 2 : 0);
 
   return (
     <tr className={`border-b border-[--border] last:border-0 ${stripe ? 'bg-[--bg-elevated]/40' : ''}`}>
       <td className="px-4 py-3 font-mono text-xs text-[--text-primary]">
         <span className="flex items-center gap-2">
-          <span className={`h-1.5 w-1.5 rounded-full ${layerDot[layer]}`} />
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
           {metric.table}
         </span>
       </td>
-      <td className="px-4 py-3 font-mono text-xs font-medium text-[--text-secondary]">
+      <td className="px-4 py-3 font-mono text-xs font-medium text-[--text-secondary] tabular-nums">
         {hasError ? '—' : formatNumber(metric.row_count)}
+      </td>
+      <td className="w-36 px-4 py-3">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[--bg-elevated]">
+          <div className={`h-full rounded-full transition-all duration-700 ${style.bar}`} style={{ width: `${pct}%` }} />
+        </div>
       </td>
       <td className="px-4 py-3 font-mono text-xs text-[--text-muted]">
         {metric.latest_partition ?? '—'}

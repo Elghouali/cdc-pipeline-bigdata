@@ -74,6 +74,16 @@ async def _metric_for_table(table: str) -> TableMetric:
         logger.warning("Metric collection failed for %s: %s", table, exc)
         return TableMetric(table=table, error=str(exc))
 
+async def _metric_for_table_safe(table: str) -> TableMetric:
+    try:
+        return await asyncio.wait_for(_metric_for_table(table), timeout=25.0)
+    except asyncio.TimeoutError:
+        logger.warning("Timeout collecting metrics for %s", table)
+        return TableMetric(table=table, error="Timeout (query too slow)")
+    except Exception as exc:
+        logger.warning("Metric collection failed for %s: %s", table, exc)
+        return TableMetric(table=table, error=str(exc))
+
 
 @router.get("/{layer}", response_model=MetricsResponse)
 async def layer_metrics(layer: str) -> MetricsResponse:
@@ -106,17 +116,8 @@ async def layer_metrics(layer: str) -> MetricsResponse:
             detail=f"Trino query failed: {exc}",
         )
 
-    # Also wrap the metric collection for each table in a timeout
-    try:
-        metrics_results = await asyncio.wait_for(
-            asyncio.gather(*(_metric_for_table(t) for t in tables)),
-            timeout=10.0
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="Table metrics collection timed out after 10 seconds",
-        )
+    # Gather metrics for all tables. Individual tables will handle their own timeouts gracefully
+    metrics_results = await asyncio.gather(*(_metric_for_table_safe(t) for t in tables))
 
     response = MetricsResponse(
         layer=layer,  # type: ignore[arg-type]

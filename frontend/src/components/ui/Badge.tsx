@@ -1,31 +1,30 @@
 import { cn } from '@/lib/utils';
+import type { ReactNode } from 'react';
 
-type Variant = 'success' | 'error' | 'warning' | 'info' | 'muted' | 'purple';
+type Variant = 'success' | 'error' | 'warning' | 'info' | 'muted' | 'purple' | 'orange' | 'bronze';
 
-interface BadgeProps {
-  variant?: Variant;
-  children: React.ReactNode;
-  className?: string;
-}
-
-const variantStyles: Record<Variant, string> = {
-  success: 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/30 shadow-[0_0_12px_rgba(16,255,170,0.15)]',
-  error:   'bg-red-400/10 text-red-300 ring-red-400/30 shadow-[0_0_12px_rgba(244,63,94,0.15)]',
-  warning: 'bg-amber-400/10 text-amber-300 ring-amber-400/30 shadow-[0_0_12px_rgba(251,191,36,0.12)]',
-  info:    'bg-cyan-400/10 text-cyan-300 ring-cyan-400/30 shadow-[0_0_12px_rgba(0,229,255,0.18)]',
-  muted:   'bg-white/[0.04] text-slate-400 ring-white/[0.08]',
-  purple:  'bg-purple-400/10 text-purple-300 ring-purple-400/30 shadow-[0_0_12px_rgba(168,85,247,0.15)]',
+const VARIANTS: Record<Variant, string> = {
+  success: 'bg-[#1a2e1f] text-[#3FB950] border-[#2d5a35]',
+  error:   'bg-[#2e1a1a] text-[#F85149] border-[#5a2d2d]',
+  warning: 'bg-[#2e2510] text-[#D29922] border-[#5a4a20]',
+  info:    'bg-[#0d2230] text-[#00D4FF] border-[#1a4060]',
+  muted:   'bg-[--bg-elevated] text-[--text-muted] border-[--border]',
+  purple:  'bg-[#2a1a3e] text-[#BC8CFF] border-[#4a2d70]',
+  orange:  'bg-[#2e1e0a] text-[#FFA657] border-[#5a3a14]',
+  bronze:  'bg-[#2a1e10] text-[#B08050] border-[#4a3820]',
 };
 
-export function Badge({ variant = 'muted', children, className }: BadgeProps) {
+export function Badge({ variant = 'muted', children, className }: {
+  variant?: Variant;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ring-1 ring-inset',
-        variantStyles[variant],
-        className,
-      )}
-    >
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]',
+      VARIANTS[variant],
+      className,
+    )}>
       {children}
     </span>
   );

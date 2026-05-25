@@ -1,10 +1,80 @@
 import { FormEvent, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Zap } from 'lucide-react';
+import { AlertCircle, Lock, WifiOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/Button';
 
-const TECH_STACK = ['Kafka', 'Spark', 'Iceberg', 'Trino', 'MinIO'];
+const PIPELINE_NODES = [
+  { id: 'pg',      label: 'PostgreSQL', sublabel: ':5432', color: '#58A6FF', bg: '#58A6FF18' },
+  { id: 'kafka',   label: 'Kafka',      sublabel: ':9092', color: '#FFA657', bg: '#FFA65718' },
+  { id: 'spark',   label: 'Spark',      sublabel: ':7077', color: '#D29922', bg: '#D2992218' },
+  { id: 'iceberg', label: 'Iceberg',    sublabel: 'tables', color: '#79C0FF', bg: '#79C0FF18' },
+  { id: 'trino',   label: 'Trino',      sublabel: ':8080', color: '#BC8CFF', bg: '#BC8CFF18' },
+  { id: 'minio',   label: 'MinIO',      sublabel: ':9000', color: '#3FB950', bg: '#3FB95018' },
+];
+
+const TECH_PILLS = ['KAFKA', 'SPARK', 'ICEBERG', 'TRINO', 'MINIO'];
+
+function PipelineDiagram() {
+  const nodeW = 80;
+  const gap = 28;
+
+  return (
+    <div className="relative flex items-center">
+      {PIPELINE_NODES.map((node, idx) => (
+        <div key={node.id} className="flex items-center">
+          {/* Node */}
+          <div className="group relative flex flex-col items-center" style={{ width: nodeW }}>
+            {/* Tooltip */}
+            <div className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded border border-[--border] bg-[--bg-surface] px-2 py-1 font-mono text-[9px] text-[--text-muted] opacity-0 transition-opacity group-hover:opacity-100">
+              {node.label} · {node.sublabel}
+            </div>
+            <div
+              className="relative flex h-14 w-full flex-col items-center justify-center rounded-lg border transition-transform group-hover:scale-105"
+              style={{ backgroundColor: node.bg, borderColor: `${node.color}45` }}
+            >
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-[--bg-base] node-glow" style={{ backgroundColor: '#3FB950' }} />
+              <span className="font-mono text-[10px] font-bold" style={{ color: node.color }}>{node.label}</span>
+              <span className="font-mono text-[8px] mt-0.5" style={{ color: `${node.color}80` }}>{node.sublabel}</span>
+            </div>
+          </div>
+
+          {/* Arrow connector */}
+          {idx < PIPELINE_NODES.length - 1 && (
+            <div className="relative mx-1 flex items-center" style={{ width: gap }}>
+              <div className="h-px w-full bg-[--border]" />
+              <svg
+                className="absolute left-0 w-full overflow-visible"
+                height="3"
+                viewBox={`0 0 ${gap} 3`}
+                preserveAspectRatio="none"
+              >
+                <line
+                  x1="0" y1="1.5" x2={gap} y2="1.5"
+                  stroke={node.color}
+                  strokeWidth="1.5"
+                  strokeDasharray="5 5"
+                  opacity="0.65"
+                  className="dash-flow"
+                  style={{ animationDelay: `${idx * 0.35}s` }}
+                />
+              </svg>
+              <svg className="absolute right-0 shrink-0" width="6" height="7" viewBox="0 0 6 7">
+                <path d="M0 0 L6 3.5 L0 7 Z" fill={node.color} opacity="0.55" />
+              </svg>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getErrorType(msg: string): 'server' | 'auth' | 'network' | 'generic' {
+  if (msg.includes('500') || msg.includes('API')) return 'server';
+  if (msg.includes('401') || msg.includes('credentials') || msg.includes('Invalid')) return 'auth';
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('Failed to fetch')) return 'network';
+  return 'generic';
+}
 
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
@@ -14,9 +84,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (isAuthenticated) {
-    return <Navigate to="/health" replace />;
-  }
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -24,7 +92,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(username, password);
-      navigate('/health', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -32,108 +100,141 @@ export function LoginPage() {
     }
   }
 
+  const errType = error ? getErrorType(error) : null;
+
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[--bg-base] px-4">
-      {/* Animated blobs */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="blob-animate absolute -left-40 -top-40 h-[480px] w-[480px] rounded-full bg-cyan-500/[0.08] blur-[120px]" />
-        <div className="blob-animate-delay absolute left-1/2 top-1/2 h-[640px] w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-500/[0.07] blur-[140px]" />
-        <div className="blob-animate-slow absolute -bottom-40 -right-40 h-[420px] w-[420px] rounded-full bg-emerald-500/[0.06] blur-[120px]" />
-      </div>
+    <div className="flex min-h-screen bg-[--bg-base]">
 
-      {/* Mesh grid */}
-      <div aria-hidden className="mesh-grid pointer-events-none fixed inset-0 opacity-40" />
+      {/* LEFT panel (60%) */}
+      <div
+        className="relative hidden flex-col items-center justify-center overflow-hidden lg:flex"
+        style={{ width: '60%' }}
+      >
+        <div className="dot-grid absolute inset-0 opacity-50" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,transparent_30%,#0D1117_100%)]" />
 
-      {/* Vignette */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_center,transparent_25%,var(--bg-base)_85%)]" />
-
-      <div className="relative z-10 w-full max-w-md">
-        {/* Brand hero */}
-        <div className="mb-10 flex flex-col items-center gap-5">
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/30 via-purple-500/20 to-purple-600/30 ring-1 ring-white/10 shadow-[0_0_48px_rgba(0,229,255,0.25)]">
-            <Zap className="h-8 w-8 text-cyan-200" strokeWidth={2.25} />
-            <span className="absolute -inset-2 -z-10 rounded-3xl bg-gradient-to-br from-cyan-500/20 to-purple-600/20 blur-xl" />
-            <span aria-hidden className="absolute -top-px left-1/2 h-px w-24 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
-          </div>
+        <div className="relative z-10 flex flex-col items-center gap-12 px-16">
           <div className="text-center">
-            <h1 className="gradient-text text-3xl font-black tracking-tight">CDC Pipeline</h1>
-            <p className="mt-2 text-xs font-medium uppercase tracking-[0.3em] text-[--text-muted]">
-              Medallion · Real-time Console
+            <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-[--text-dim]">
+              Real-time data engineering control center
+            </p>
+            <h1 className="text-4xl font-bold tracking-tight text-[--text-primary]">
+              Medallion <span className="gradient-text">Pipeline</span>
+            </h1>
+            <p className="mt-2 text-sm text-[--text-muted]">
+              End-to-end CDC · Bronze → Silver → Gold
             </p>
           </div>
+
+          <div className="overflow-x-auto pb-2">
+            <PipelineDiagram />
+          </div>
+
+          <div className="flex items-center gap-3">
+            {[
+              { label: 'BRONZE', color: '#B08050' },
+              { label: 'SILVER', color: '#8B949E' },
+              { label: 'GOLD',   color: '#D29922' },
+            ].map(({ label, color }) => (
+              <span
+                key={label}
+                className="rounded border px-2.5 py-1 font-mono text-[10px] font-semibold tracking-[0.1em]"
+                style={{ borderColor: `${color}40`, color, backgroundColor: `${color}10` }}
+              >
+                {label}
+              </span>
+            ))}
+            <span className="font-mono text-[10px] text-[--text-dim]">v1.0</span>
+          </div>
         </div>
+      </div>
 
-        {/* Form card — glass */}
-        <form
-          onSubmit={handleSubmit}
-          className="relative space-y-5 overflow-hidden rounded-2xl border border-white/[0.06] bg-[--bg-glass] p-7 backdrop-blur-xl shadow-[0_24px_64px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.05)]"
-        >
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/80 to-transparent" />
+      {/* RIGHT panel (40%) */}
+      <div className="flex flex-1 flex-col items-center justify-center border-l border-[--border] bg-[--bg-surface] px-8 py-12 lg:px-12">
+        <div className="w-full" style={{ maxWidth: 380 }}>
 
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[--text-muted]">Welcome back</p>
-            <p className="mt-1 text-lg font-semibold text-[--text-primary]">Sign in to your workspace</p>
+          <div className="mb-8">
+            <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[--border] bg-[--bg-elevated]">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#00D4FF" strokeWidth={2}>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-[--text-primary]">CDC Pipeline</h2>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[--text-dim]">
+              MEDALLION REAL-TIME CONSOLE
+            </p>
           </div>
 
           {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
+            <div className={`mb-5 flex items-start gap-3 rounded-lg border p-3 ${
+              errType === 'auth'    ? 'border-[#F85149]/30 bg-[#F85149]/8' :
+              errType === 'network' ? 'border-[--border] bg-[--bg-elevated]' :
+              errType === 'server'  ? 'border-[#D29922]/30 bg-[#D29922]/8' :
+                                     'border-[--border] bg-[--bg-elevated]'
+            }`}>
+              {errType === 'auth'    && <Lock    className="mt-0.5 h-4 w-4 shrink-0 text-[#F85149]" />}
+              {errType === 'network' && <WifiOff  className="mt-0.5 h-4 w-4 shrink-0 text-[--text-muted]" />}
+              {(errType === 'server' || errType === 'generic') && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#D29922]" />}
+              <p className="text-sm" style={{
+                color: errType === 'auth' ? '#F85149' : errType === 'server' ? '#D29922' : '#8B949E',
+              }}>
+                {errType === 'network' ? 'Cannot reach server — check your connection' :
+                 errType === 'auth'    ? 'Invalid credentials' :
+                 errType === 'server'  ? 'API unreachable on :8000' :
+                 error}
+              </p>
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label htmlFor="username" className="text-[11px] font-semibold uppercase tracking-wider text-[--text-secondary]">
-              Username
-            </label>
-            <input
-              id="username"
-              type="text"
-              autoComplete="username"
-              required
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-sm text-[--text-primary] placeholder-[--text-muted] outline-none transition-all focus:border-cyan-400/50 focus:bg-white/[0.04] focus:ring-2 focus:ring-cyan-500/20"
-              placeholder="admin"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-wider text-[--text-secondary]">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-sm text-[--text-primary] placeholder-[--text-muted] outline-none transition-all focus:border-cyan-400/50 focus:bg-white/[0.04] focus:ring-2 focus:ring-cyan-500/20"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <Button type="submit" size="lg" isLoading={loading} className="w-full">
-            {loading ? 'Signing in…' : 'Sign in →'}
-          </Button>
-        </form>
-
-        {/* Tech stack chips */}
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-1.5">
-          {TECH_STACK.map((t, i) => (
-            <span
-              key={t}
-              className="rounded-full border border-white/[0.06] bg-white/[0.02] px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-wider text-[--text-secondary] backdrop-blur"
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="username" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-muted]">
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                autoComplete="username"
+                required
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="admin"
+                className="h-12 w-full rounded-md border border-[--border] bg-[--bg-elevated] px-3.5 text-sm text-[--text-primary] placeholder-[--text-dim] outline-none transition-all focus:border-[--accent-cyan] focus:ring-2 focus:ring-[--accent-cyan]/20"
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-muted]">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="h-12 w-full rounded-md border border-[--border] bg-[--bg-elevated] px-3.5 text-sm text-[--text-primary] placeholder-[--text-dim] outline-none transition-all focus:border-[--accent-cyan] focus:ring-2 focus:ring-[--accent-cyan]/20"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading || !username.trim() || !password.trim()}
+              className="mt-6 h-12 w-full rounded-md text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'linear-gradient(135deg, #00D4FF 0%, #BC8CFF 100%)' }}
             >
-              {t}
-              {i < TECH_STACK.length - 1 && <span className="ml-1.5 text-[--text-muted]/50">·</span>}
-            </span>
-          ))}
-        </div>
+              {loading ? 'Signing in…' : 'Sign in →'}
+            </button>
+          </form>
 
-        <p className="mt-5 text-center font-mono text-[10px] uppercase tracking-widest text-[--text-muted]">
-          v1.0 · Bronze · Silver · Gold
-        </p>
+          <div className="mt-8 flex flex-wrap gap-1.5">
+            {TECH_PILLS.map(t => (
+              <span key={t} className="rounded border border-[--border] bg-[--bg-elevated] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[--text-dim]">
+                {t}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

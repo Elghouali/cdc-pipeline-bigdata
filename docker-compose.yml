@@ -316,7 +316,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2.5g
+          memory: 3g
     networks:
       - cdc-net
 

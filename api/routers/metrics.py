@@ -55,19 +55,26 @@ async def _table_columns(table: str) -> set[str]:
 
 async def _metric_for_table(table: str) -> TableMetric:
     try:
-        row_count = await fetch_scalar(f"SELECT COUNT(*) FROM {_qualified(table)}")
-        columns = await _table_columns(table)
-        latest_partition: str | None = None
-        for candidate in _PARTITION_COLUMNS:
-            if candidate in columns:
-                value = await fetch_scalar(
-                    f"SELECT MAX({candidate}) FROM {_qualified(table)}"
-                )
-                latest_partition = None if value is None else str(value)
-                break
+        # Optimized Iceberg metadata query: reads metadata.json instead of scanning Parquet files
+        query = (
+            f"SELECT summary['total-records'], CAST(committed_at AS VARCHAR) "
+            f"FROM {ICEBERG_CATALOG}.{ICEBERG_SCHEMA}.\"{table}$snapshots\" "
+            "ORDER BY committed_at DESC LIMIT 1"
+        )
+        rows = await fetch_all(query)
+        
+        if rows:
+            vals = list(rows[0].values())
+            row_count_str = vals[0]
+            latest_partition = vals[1]
+            row_count = int(row_count_str) if row_count_str else 0
+        else:
+            row_count = 0
+            latest_partition = None
+
         return TableMetric(
             table=table,
-            row_count=int(row_count) if row_count is not None else 0,
+            row_count=row_count,
             latest_partition=latest_partition,
         )
     except (TrinoError, ValueError) as exc:

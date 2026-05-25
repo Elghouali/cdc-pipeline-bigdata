@@ -90,17 +90,37 @@ async def layer_metrics(layer: str) -> MetricsResponse:
             return cached[0].model_copy(update={"cached": True})
 
     try:
-        tables = await _list_tables(LAYER_PREFIXES[layer])
+        # Wrap the entire list_tables query in a strict 5-second timeout
+        tables = await asyncio.wait_for(
+            _list_tables(LAYER_PREFIXES[layer]), 
+            timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Trino query timed out after 5 seconds",
+        )
     except TrinoError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Trino query failed: {exc}",
         )
 
-    metrics = await asyncio.gather(*(_metric_for_table(t) for t in tables))
+    # Also wrap the metric collection for each table in a timeout
+    try:
+        metrics_results = await asyncio.wait_for(
+            asyncio.gather(*(_metric_for_table(t) for t in tables)),
+            timeout=10.0
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Table metrics collection timed out after 10 seconds",
+        )
+
     response = MetricsResponse(
         layer=layer,  # type: ignore[arg-type]
-        tables=list(metrics),
+        tables=list(metrics_results),
         cached=False,
         generated_at=datetime.now(timezone.utc),
     )

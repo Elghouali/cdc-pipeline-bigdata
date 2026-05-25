@@ -212,23 +212,32 @@ export function DashboardPage() {
 
   async function loadData(manual = false) {
     if (manual) setRefreshing(true);
+    
+    // Fetch health independently so it populates immediately
+    fetchHealth().then(setHealth).catch(() => {});
+
     try {
-      const [h, ...layerResults] = await Promise.allSettled([
-        fetchHealth(),
+      const layerResults = await Promise.allSettled([
         fetchMetrics('bronze'),
         fetchMetrics('silver'),
         fetchMetrics('gold'),
       ]);
-      if (h.status === 'fulfilled') setHealth(h.value);
+      
       const layerKeys: Layer[] = ['bronze', 'silver', 'gold'];
       setLayers(prev => {
         const next = { ...prev };
         layerResults.forEach((r, i) => {
-          if (r.status === 'fulfilled') next[layerKeys[i]] = r.value;
+          if (r.status === 'fulfilled') {
+            next[layerKeys[i]] = r.value;
+          } else {
+            // If failed, provide empty data so the skeleton stops shimmering
+            next[layerKeys[i]] = { tables: [], cached: false, layer: layerKeys[i] } as any;
+          }
         });
         return next;
       });
     } catch { /* keep previous */ }
+    
     if (manual) setRefreshing(false);
   }
 

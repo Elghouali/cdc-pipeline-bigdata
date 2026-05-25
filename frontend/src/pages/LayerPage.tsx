@@ -16,14 +16,17 @@ export function LayerPage({ layer }: { layer: Layer }) {
   const [data, setData] = useState<MetricsResponse | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     let active = true;
+    setError(null);
     async function load() {
       try {
         const res = await fetchMetrics(layer);
         if (active) setData(res);
-      } catch {
-        // Handle error
+      } catch (err: any) {
+        if (active) setError(err.message || 'Failed to load tables');
       }
     }
     void load();
@@ -85,8 +88,17 @@ export function LayerPage({ layer }: { layer: Layer }) {
                 <div><Badge variant="success">HEALTHY</Badge></div>
               </button>
             ))}
-            {!data && (
+            {(!data && !error) && (
               <div className="p-8 text-center text-sm text-[--text-muted]">Loading tables...</div>
+            )}
+            {error && (
+              <div className="p-8 text-center text-sm text-[--accent-red] bg-[--accent-red]/10 border border-[--accent-red]/20 m-4 rounded">
+                Error: {error}
+                <p className="mt-2 text-xs text-[--text-muted]">Make sure Trino and Iceberg are running and accessible.</p>
+              </div>
+            )}
+            {data?.tables.length === 0 && (
+              <div className="p-8 text-center text-sm text-[--text-muted]">No tables found in this layer yet.</div>
             )}
           </div>
         </div>

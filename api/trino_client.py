@@ -36,11 +36,15 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
 
     Each yielded item maps column name -> value for one result row.
     """
-    async with httpx.AsyncClient(base_url=settings.trino_url, timeout=60.0) as client:
-        response = await client.post(
-            _STATEMENT_PATH, content=sql.encode("utf-8"), headers=_headers()
-        )
-        response.raise_for_status()
+    async with httpx.AsyncClient(base_url=settings.trino_url, timeout=10.0) as client:
+        try:
+            response = await client.post(
+                _STATEMENT_PATH, content=sql.encode("utf-8"), headers=_headers()
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise TrinoError(f"HTTP connection error: {exc}")
+
         body: dict[str, Any] = response.json()
 
         columns: list[str] | None = None
@@ -64,8 +68,12 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
                 break
 
             await asyncio.sleep(_POLL_DELAY_SECONDS)
-            poll = await client.get(next_uri, headers=_headers())
-            poll.raise_for_status()
+            try:
+                poll = await client.get(next_uri, headers=_headers())
+                poll.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise TrinoError(f"HTTP polling error: {exc}")
+            
             body = poll.json()
 
 

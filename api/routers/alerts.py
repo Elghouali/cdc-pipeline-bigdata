@@ -27,7 +27,7 @@ async def list_alerts(
     """Return pipeline alerts, optionally filtered by acknowledgement state."""
     pool = get_pool()
     query = (
-        "SELECT id, title, severity, fired_at, acknowledged_at, acknowledged_by "
+        "SELECT id, title, severity, details, fired_at, acknowledged_at, acknowledged_by "
         "FROM pipeline_alerts"
     )
     if acknowledged is True:
@@ -44,6 +44,7 @@ async def list_alerts(
             id=r["id"],
             title=r["title"],
             severity=r["severity"],
+            details=dict(r["details"]) if r["details"] is not None else None,
             fired_at=r["fired_at"],
             acknowledged_at=r["acknowledged_at"],
             acknowledged_by=r["acknowledged_by"],
@@ -65,7 +66,7 @@ async def acknowledge_alert(
             "UPDATE pipeline_alerts "
             "SET acknowledged_at = NOW(), acknowledged_by = $1 "
             "WHERE id = $2 "
-            "RETURNING id, title, severity, fired_at, "
+            "RETURNING id, title, severity, details, fired_at, "
             "acknowledged_at, acknowledged_by",
             body.user,
             alert_id,
@@ -82,6 +83,7 @@ async def acknowledge_alert(
         id=row["id"],
         title=row["title"],
         severity=row["severity"],
+        details=dict(row["details"]) if row["details"] is not None else None,
         fired_at=row["fired_at"],
         acknowledged_at=row["acknowledged_at"],
         acknowledged_by=row["acknowledged_by"],

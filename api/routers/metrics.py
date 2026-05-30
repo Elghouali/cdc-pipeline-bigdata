@@ -2,6 +2,10 @@
 
 Caller: api/main.py. Endpoint: GET /api/metrics/{layer}.
 Results are cached in-process for 30 seconds per layer.
+
+NOTE: When running with multiple uvicorn workers (prod Dockerfile), each worker
+process maintains its own cache. The cache reduces Trino load per worker but does
+not coordinate across workers. For a shared cache, replace _cache with Redis.
 """
 
 import asyncio
@@ -13,7 +17,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from config import ICEBERG_CATALOG, ICEBERG_SCHEMA, LAYER_PREFIXES
 from models import MetricsResponse, TableMetric
-from trino_client import TrinoError, fetch_all, fetch_scalar
+from trino_client import TrinoError, fetch_all
 
 logger = logging.getLogger("cdc-api.metrics")
 
@@ -22,10 +26,11 @@ router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 _CACHE_TTL_SECONDS = 30.0
 # layer -> (response, monotonic_timestamp)
 _cache: dict[str, tuple[MetricsResponse, float]] = {}
+# layer -> asyncio.Future that resolves once the in-flight computation finishes.
+# Any request that arrives while a computation is running waits on this future
+# rather than launching a duplicate Trino query.
+_pending: dict[str, asyncio.Future[MetricsResponse]] = {}
 _cache_lock = asyncio.Lock()
-
-# Candidate partition columns, ordered by preference, across medallion layers.
-_PARTITION_COLUMNS = ("snapshot_date", "_ingest_date", "ingest_date", "event_date")
 
 
 def _qualified(table: str) -> str:
@@ -43,30 +48,21 @@ async def _list_tables(prefix: str) -> list[str]:
     return [str(r["table_name"]) for r in rows]
 
 
-async def _table_columns(table: str) -> set[str]:
-    rows = await fetch_all(
-        "SELECT column_name FROM "
-        f"{ICEBERG_CATALOG}.information_schema.columns "
-        f"WHERE table_schema = '{ICEBERG_SCHEMA}' "
-        f"AND table_name = '{table}'"
-    )
-    return {str(r["column_name"]) for r in rows}
-
-
 async def _metric_for_table(table: str) -> TableMetric:
     try:
-        # Optimized Iceberg metadata query: reads metadata.json instead of scanning Parquet files
+        # Use Iceberg $snapshots metadata — reads metadata.json, not Parquet files.
+        # Explicit aliases let us access columns by name, not fragile position.
         query = (
-            f"SELECT summary['total-records'], CAST(committed_at AS VARCHAR) "
+            f"SELECT summary['total-records'] AS row_count, "
+            f"CAST(committed_at AS VARCHAR) AS partition_ts "
             f"FROM {ICEBERG_CATALOG}.{ICEBERG_SCHEMA}.\"{table}$snapshots\" "
             "ORDER BY committed_at DESC LIMIT 1"
         )
         rows = await fetch_all(query)
-        
+
         if rows:
-            vals = list(rows[0].values())
-            row_count_str = vals[0]
-            latest_partition = vals[1]
+            row_count_str = rows[0].get("row_count")
+            latest_partition = rows[0].get("partition_ts")
             row_count = int(row_count_str) if row_count_str else 0
         else:
             row_count = 0
@@ -81,6 +77,7 @@ async def _metric_for_table(table: str) -> TableMetric:
         logger.warning("Metric collection failed for %s: %s", table, exc)
         return TableMetric(table=table, error=str(exc))
 
+
 async def _metric_for_table_safe(table: str) -> TableMetric:
     try:
         return await asyncio.wait_for(_metric_for_table(table), timeout=25.0)
@@ -92,25 +89,12 @@ async def _metric_for_table_safe(table: str) -> TableMetric:
         return TableMetric(table=table, error=str(exc))
 
 
-@router.get("/{layer}", response_model=MetricsResponse)
-async def layer_metrics(layer: str) -> MetricsResponse:
-    """Return per-table row counts and latest partitions for one layer."""
-    if layer not in LAYER_PREFIXES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown layer '{layer}'. Expected bronze, silver, or gold.",
-        )
-
-    async with _cache_lock:
-        cached = _cache.get(layer)
-        if cached is not None and (time.monotonic() - cached[1]) < _CACHE_TTL_SECONDS:
-            return cached[0].model_copy(update={"cached": True})
-
+async def _compute_metrics(layer: str) -> MetricsResponse:
+    """Run the Trino queries to build a fresh MetricsResponse for `layer`."""
     try:
-        # Wrap the entire list_tables query in a strict 5-second timeout
         tables = await asyncio.wait_for(
-            _list_tables(LAYER_PREFIXES[layer]), 
-            timeout=5.0
+            _list_tables(LAYER_PREFIXES[layer]),
+            timeout=5.0,
         )
     except asyncio.TimeoutError:
         raise HTTPException(
@@ -123,16 +107,61 @@ async def layer_metrics(layer: str) -> MetricsResponse:
             detail=f"Trino query failed: {exc}",
         )
 
-    # Gather metrics for all tables. Individual tables will handle their own timeouts gracefully
     metrics_results = await asyncio.gather(*(_metric_for_table_safe(t) for t in tables))
 
-    response = MetricsResponse(
+    return MetricsResponse(
         layer=layer,  # type: ignore[arg-type]
         tables=list(metrics_results),
         cached=False,
         generated_at=datetime.now(timezone.utc),
     )
 
+
+@router.get("/{layer}", response_model=MetricsResponse)
+async def layer_metrics(layer: str) -> MetricsResponse:
+    """Return per-table row counts and latest partitions for one layer."""
+    if layer not in LAYER_PREFIXES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown layer '{layer}'. Expected bronze, silver, or gold.",
+        )
+
+    async with _cache_lock:
+        # Serve from cache if fresh.
+        cached = _cache.get(layer)
+        if cached is not None and (time.monotonic() - cached[1]) < _CACHE_TTL_SECONDS:
+            return cached[0].model_copy(update={"cached": True})
+
+        # If another coroutine is already computing this layer, wait for it.
+        if layer in _pending:
+            future = _pending[layer]
+        else:
+            # We are the first; register a future so subsequent requests wait.
+            future: asyncio.Future[MetricsResponse] = asyncio.get_running_loop().create_future()
+            _pending[layer] = future
+            future = None  # signal that we must compute
+
+    if future is not None:
+        # Wait for the in-flight computation started by another coroutine.
+        return await future
+
+    # We hold no lock here; compute the expensive queries without blocking others.
+    try:
+        response = await _compute_metrics(layer)
+    except Exception as exc:
+        # Resolve pending waiters with the original exception so they don't hang
+        # and receive the correct HTTP status code (e.g. 504, 502).
+        async with _cache_lock:
+            fut = _pending.pop(layer, None)
+        if fut and not fut.done():
+            fut.set_exception(exc)
+        raise
+
     async with _cache_lock:
         _cache[layer] = (response, time.monotonic())
+        fut = _pending.pop(layer, None)
+
+    if fut and not fut.done():
+        fut.set_result(response)
+
     return response

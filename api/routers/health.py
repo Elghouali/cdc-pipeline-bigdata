@@ -42,7 +42,9 @@ async def _check_http(service: str, url: str, ok_statuses: set[int]) -> HealthIt
             latency_ms=_elapsed_ms(start),
             detail=f"HTTP {resp.status_code}",
         )
-    except (httpx.HTTPError, asyncio.TimeoutError) as exc:
+    except httpx.HTTPError as exc:
+        # httpx raises httpx.TimeoutException (subclass of HTTPError) on timeout,
+        # not asyncio.TimeoutError — so HTTPError covers all cases here.
         return HealthItem(
             service=service,
             status="down",

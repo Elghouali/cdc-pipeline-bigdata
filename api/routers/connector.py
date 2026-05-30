@@ -56,7 +56,8 @@ async def connector_restart(
     _admin: User = Depends(require_admin),
 ) -> dict[str, str]:
     """Restart the Debezium connector. Requires the admin role."""
-    url = f"{_connector_base()}/restart"
+    # includeTasks=true restarts failed tasks alongside the connector itself.
+    url = f"{_connector_base()}/restart?includeTasks=true&onlyFailed=false"
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
             resp = await client.post(url)

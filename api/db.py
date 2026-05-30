@@ -85,14 +85,15 @@ async def init_schema() -> None:
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(_SCHEMA_SQL)
-        user_count: int = await conn.fetchval("SELECT COUNT(*) FROM api_users")
-        if user_count == 0:
-            await conn.execute(
-                "INSERT INTO api_users (username, password_hash, role) "
-                "VALUES ($1, $2, $3)",
-                "admin",
-                hash_password(settings.admin_password),
-                "admin",
-            )
+        # ON CONFLICT DO NOTHING makes the seed atomic: safe under concurrent
+        # startup (multiple container replicas) and idempotent on restart.
+        result = await conn.execute(
+            "INSERT INTO api_users (username, password_hash, role) "
+            "VALUES ($1, $2, $3) ON CONFLICT (username) DO NOTHING",
+            "admin",
+            hash_password(settings.admin_password),
+            "admin",
+        )
+        if result.endswith("1"):
             logger.info("Seeded default admin user.")
     logger.info("Database schema ready.")

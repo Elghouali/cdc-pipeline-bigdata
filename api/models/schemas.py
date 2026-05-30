@@ -4,7 +4,7 @@ Defines request/response models used across routers. No data-file I/O.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -82,6 +82,7 @@ class Alert(BaseModel):
     id: int
     title: str
     severity: str
+    details: dict[str, Any] | None = None
     fired_at: datetime
     acknowledged_at: datetime | None = None
     acknowledged_by: str | None = None

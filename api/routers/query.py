@@ -37,10 +37,21 @@ _BLOCKED_PATTERN = re.compile(
     r"\b(" + "|".join(_BLOCKED_KEYWORDS) + r")\b", re.IGNORECASE
 )
 _COMMENT_PATTERN = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+# Matches single-quoted string literals (handles escaped quotes via '' doubling).
+_STRING_LITERAL_PATTERN = re.compile(r"'(?:[^'\\]|\\.)*'")
 
 
 def _strip_comments(sql: str) -> str:
     return _COMMENT_PATTERN.sub(" ", sql)
+
+
+def _strip_string_literals(sql: str) -> str:
+    """Replace string literals with '' so blocked-keyword check avoids false positives.
+
+    Without this, a query like WHERE status = 'CREATE_PENDING' would be rejected
+    even though CREATE appears only inside a string value.
+    """
+    return _STRING_LITERAL_PATTERN.sub("''", sql)
 
 
 def _validate_sql(sql: str) -> str:
@@ -56,7 +67,7 @@ def _validate_sql(sql: str) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Multiple statements are not allowed.",
         )
-    blocked = _BLOCKED_PATTERN.search(cleaned)
+    blocked = _BLOCKED_PATTERN.search(_strip_string_literals(cleaned))
     if blocked is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

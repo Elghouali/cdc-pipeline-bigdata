@@ -6,6 +6,7 @@ api/routers/metrics.py, api/routers/query.py.
 """
 
 import asyncio
+import json
 import logging
 from typing import Any, AsyncIterator
 
@@ -45,7 +46,10 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
         except httpx.HTTPError as exc:
             raise TrinoError(f"HTTP connection error: {exc}")
 
-        body: dict[str, Any] = response.json()
+        try:
+            body: dict[str, Any] = response.json()
+        except json.JSONDecodeError as exc:
+            raise TrinoError(f"Invalid JSON in Trino response: {exc}")
 
         columns: list[str] | None = None
 
@@ -55,7 +59,7 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
                 message = error.get("message", "Unknown Trino error")
                 raise TrinoError(message)
 
-            if body.get("columns") and columns is None:
+            if body.get("columns"):
                 columns = [col["name"] for col in body["columns"]]
 
             for row in body.get("data", []) or []:
@@ -74,18 +78,12 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
             except httpx.HTTPError as exc:
                 raise TrinoError(f"HTTP polling error: {exc}")
             
-            body = poll.json()
+            try:
+                body = poll.json()
+            except json.JSONDecodeError as exc:
+                raise TrinoError(f"Invalid JSON in Trino poll response: {exc}")
 
 
 async def fetch_all(sql: str) -> list[dict[str, Any]]:
     """Execute `sql` and return all result rows materialized as a list."""
     return [row async for row in stream_query(sql)]
-
-
-async def fetch_scalar(sql: str) -> Any:
-    """Execute `sql` and return the first column of the first row, or None."""
-    async for row in stream_query(sql):
-        if row:
-            return next(iter(row.values()))
-        return None
-    return None

@@ -7,6 +7,8 @@ Consumes Debezium change events (schemas disabled) and re-emits them as SSE.
 import asyncio
 import json
 import logging
+import time
+import uuid
 from typing import Any, AsyncIterator
 
 from aiokafka import AIOKafkaConsumer
@@ -54,10 +56,14 @@ def _to_event(topic: str, envelope: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _event_generator(request: Request) -> AsyncIterator[bytes]:
+    # Each SSE connection gets a unique group_id so every browser tab receives
+    # all events. A shared group_id would cause Kafka to load-balance messages
+    # across connections, meaning each tab sees only a fraction of events.
+    unique_group = f"{settings.kafka_consumer_group}-{uuid.uuid4().hex}"
     consumer = AIOKafkaConsumer(
         *CDC_TOPICS,
         bootstrap_servers=settings.kafka_bootstrap_servers,
-        group_id=settings.kafka_consumer_group,
+        group_id=unique_group,
         auto_offset_reset="latest",
         enable_auto_commit=True,
     )
@@ -71,6 +77,8 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
     yield _sse("ready", {"topics": list(CDC_TOPICS)})
     logger.info("SSE client connected; streaming CDC events.")
 
+    last_heartbeat = time.monotonic()
+
     try:
         while True:
             if await request.is_disconnected():
@@ -79,9 +87,13 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
 
             batch = await consumer.getmany(timeout_ms=1000, max_records=50)
             if not batch:
-                yield b": keep-alive\n\n"
+                now = time.monotonic()
+                if now - last_heartbeat >= _HEARTBEAT_SECONDS:
+                    yield b": keep-alive\n\n"
+                    last_heartbeat = now
                 continue
 
+            last_heartbeat = time.monotonic()
             for tp, messages in batch.items():
                 for message in messages:
                     envelope = _decode_envelope(message.value)

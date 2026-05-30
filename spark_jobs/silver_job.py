@@ -142,13 +142,15 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
         elif col_type == "DOUBLE":
             df = df.withColumn(col_name, raw.cast("double"))
         elif col_type == "DATE":
-            # Debezium encodes DATE as ISO string (yyyy-MM-dd) in connect mode
+            # connect mode (our config): Debezium encodes DATE as int32 days
+            # since epoch — try that first. ISO string fallbacks handle any
+            # future switch to adaptive/string time.precision.mode.
             df = df.withColumn(
                 col_name,
                 F.coalesce(
+                    F.to_date((raw.cast("long") * 86400).cast("timestamp")),
                     F.to_date(raw, "yyyy-MM-dd"),
                     F.to_date(raw, "yyyy-MM-dd'T'HH:mm:ss"),
-                    F.to_date((raw.cast("long") * 86400).cast("timestamp")),
                 ),
             )
         else:
@@ -238,9 +240,10 @@ def main() -> None:
     create_silver_tables(spark)
 
     logger.info("Starting %d Silver streams …", len(SILVER_DEF))
-    queries = [start_stream(spark, t) for t in SILVER_DEF]
-    for q in queries:
-        q.awaitTermination()
+    [start_stream(spark, t) for t in SILVER_DEF]
+
+    # Stop everything if any single stream fails.
+    spark.streams.awaitAnyTermination()
 
 
 if __name__ == "__main__":

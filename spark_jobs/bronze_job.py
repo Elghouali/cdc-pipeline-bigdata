@@ -86,10 +86,12 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
     enriched = (
         df
         .withColumn("raw_str",        F.col("value").cast(StringType()))
-        # Debezium wraps everything in a top-level "payload" key when schemas are disabled
+        # schemas.enable=false: the message IS the payload directly (no wrapper).
+        # Defensively try $.payload first so the job keeps working if the connector
+        # is later reconfigured with schemas enabled.
         .withColumn("payload",         F.coalesce(
             F.get_json_object(F.col("raw_str"), "$.payload"),
-            F.col("raw_str"),           # fall back: the whole message is the payload
+            F.col("raw_str"),
         ))
         .withColumn("op",              F.get_json_object(F.col("payload"), "$.op"))
         .withColumn("before_payload",  F.get_json_object(F.col("payload"), "$.before"))
@@ -121,11 +123,11 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
         .filter(F.col("op").isNotNull())
     )
 
-    # Cache to avoid re-computing enriched twice (isEmpty + write = two scans).
+    # Cache so count() materialises the plan once and writeTo() reads from memory.
     enriched.cache()
     try:
-        if not enriched.isEmpty():
-            count = enriched.count()
+        count = enriched.count()
+        if count > 0:
             enriched.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
             logger.info("Batch %d | table=%-12s | rows=%d", batch_id, table, count)
     finally:
@@ -165,10 +167,11 @@ def main() -> None:
         create_bronze_table(spark, table)
 
     logger.info("Starting %d Bronze streams …", len(TABLES))
-    queries = [start_table_stream(spark, t) for t in TABLES]
+    [start_table_stream(spark, t) for t in TABLES]
 
-    for q in queries:
-        q.awaitTermination()
+    # Stop everything if any single stream fails — avoids silently running
+    # 5 healthy streams while one has died without operator awareness.
+    spark.streams.awaitAnyTermination()
 
 
 if __name__ == "__main__":

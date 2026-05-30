@@ -147,7 +147,6 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
         p.join(o.select(F.col("id").alias("oid"), "customer_id"), p.order_id == F.col("oid"))
         .groupBy("customer_id").agg(
             F.sum("amount").alias("total_spent"),
-            F.avg("amount").alias("avg_order_value"),
         )
     )
 
@@ -160,8 +159,13 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
              F.coalesce(order_agg.delivered_orders, F.lit(0)).alias("delivered_orders"),
              F.coalesce(order_agg.cancelled_orders, F.lit(0)).alias("cancelled_orders"),
              F.coalesce(order_agg.returned_orders,  F.lit(0)).alias("returned_orders"),
-             F.coalesce(pay_agg.total_spent,         F.lit(0.0)).alias("total_spent"),
-             F.coalesce(pay_agg.avg_order_value,     F.lit(0.0)).alias("avg_order_value"),
+             F.coalesce(pay_agg.total_spent, F.lit(0.0)).alias("total_spent"),
+             # avg_order_value = total_spent / total_orders, not AVG(payment.amount):
+             # one order can span multiple payments so AVG(amount) would be wrong.
+             F.when(
+                 order_agg.total_orders > 0,
+                 F.coalesce(pay_agg.total_spent, F.lit(0.0)) / order_agg.total_orders.cast("double"),
+             ).otherwise(0.0).alias("avg_order_value"),
              order_agg.last_order_date,
              order_agg.first_order_date,
              F.current_timestamp().alias("_updated_at"),
@@ -233,9 +237,11 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
             F.col("category").alias("product_category"),
         ).agg(
             F.countDistinct(oi.order_id).alias("order_count"),
-            F.sum(F.when(F.col("status") == "delivered", 1).otherwise(0)).alias("delivered_count"),
-            F.sum(F.when(F.col("status") == "cancelled", 1).otherwise(0)).alias("cancelled_count"),
-            F.sum(F.when(F.col("status") == "returned",  1).otherwise(0)).alias("returned_count"),
+            # Count distinct order_ids per status — using SUM(WHEN) would count
+            # item rows (one order with 3 items counts as 3, not 1).
+            F.countDistinct(F.when(F.col("status") == "delivered", oi.order_id)).alias("delivered_count"),
+            F.countDistinct(F.when(F.col("status") == "cancelled", oi.order_id)).alias("cancelled_count"),
+            F.countDistinct(F.when(F.col("status") == "returned",  oi.order_id)).alias("returned_count"),
             F.sum(F.col("quantity") * F.col("unit_price")).alias("gross_revenue"),
             F.sum(F.when(F.col("status").isin("delivered", "shipped"),
                          F.col("quantity") * F.col("unit_price")).otherwise(0.0)).alias("net_revenue"),
@@ -271,19 +277,37 @@ def build_gold_returns_summary(spark: SparkSession) -> DataFrame:
     r = spark.table(f"{CATALOG}.{SCHEMA}.silver_returns").filter("_is_deleted = false")
     o = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
 
-    total_delivered = o.filter(F.col("status") == "delivered").count()
+    # Monthly delivered order counts — used as per-month denominator so that
+    # return_rate_pct is meaningful (returns this month / delivered this month).
+    # Using an all-time total would make the rate shrink every month regardless
+    # of actual return behaviour.
+    monthly_delivered = (
+        o.filter(F.col("status") == "delivered")
+        .withColumn("order_month", F.date_format("order_date", "yyyy-MM"))
+        .groupBy("order_month")
+        .agg(F.count("id").alias("delivered_count"))
+    )
 
-    return (
+    returns_agg = (
         r
         .withColumn("return_month", F.date_format("return_date", "yyyy-MM"))
         .groupBy("return_month", "reason", F.col("status").alias("return_status"))
         .agg(F.count("id").alias("return_count"))
+    )
+
+    return (
+        returns_agg
+        .join(monthly_delivered,
+              returns_agg.return_month == monthly_delivered.order_month, "left")
         .withColumn("return_rate_pct",
-                    F.when(F.lit(total_delivered) > 0,
-                           F.col("return_count") / F.lit(float(total_delivered)) * 100.0
+                    F.when(
+                        F.col("delivered_count").isNotNull() & (F.col("delivered_count") > 0),
+                        F.col("return_count") / F.col("delivered_count") * 100.0,
                     ).otherwise(0.0))
         .withColumn("_updated_at",   F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
+        .select("return_month", "reason", "return_status", "return_count",
+                "return_rate_pct", "_updated_at", "snapshot_date")
     )
 
 

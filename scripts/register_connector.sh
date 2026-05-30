@@ -31,9 +31,12 @@ for i in $(seq 1 $MAX_RETRIES); do
 done
 
 # ── Delete old connector if it exists ───────────────────────────────────────
-EXISTING=$(curl -sf "${CONNECT_URL}/connectors/${CONNECTOR_NAME}" 2>/dev/null \
-  | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))" 2>/dev/null || true)
-if [[ "$EXISTING" == "$CONNECTOR_NAME" ]]; then
+# Use HTTP status code instead of python3 JSON parsing — python3 may not be
+# available in all environments and the 2>/dev/null || true silently swallowed
+# errors, leaving stale connectors in place.
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "${CONNECT_URL}/connectors/${CONNECTOR_NAME}" 2>/dev/null || echo "000")
+if [[ "$HTTP_STATUS" == "200" ]]; then
   log "Removing existing connector '${CONNECTOR_NAME}' …"
   curl -sf -X DELETE "${CONNECT_URL}/connectors/${CONNECTOR_NAME}"
   sleep 3
@@ -48,7 +51,7 @@ RESPONSE=$(curl -sf \
   --data "@${CONNECTOR_CONFIG}")
 
 REGISTERED=$(echo "$RESPONSE" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','ERROR'))" 2>/dev/null || echo "ERROR")
+  | grep -o '"name":"[^"]*"' | head -1 | sed 's/"name":"//;s/"//' 2>/dev/null || echo "ERROR")
 
 if [[ "$REGISTERED" != "$CONNECTOR_NAME" ]]; then
   log "ERROR: Registration failed. Response:"
@@ -61,8 +64,8 @@ log "Connector '${REGISTERED}' registered."
 log "Polling connector status …"
 for i in $(seq 1 12); do
   sleep 5
-  STATE=$(curl -sf "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/status" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['connector']['state'])" 2>/dev/null || echo "UNKNOWN")
+  STATE=$(curl -sf "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/status" 2>/dev/null \
+    | grep -o '"state":"[^"]*"' | head -1 | sed 's/"state":"//;s/"//' || echo "UNKNOWN")
   log "  State: ${STATE} (check $i/12)"
   if [[ "$STATE" == "RUNNING" ]]; then
     log "Connector is RUNNING. CDC topics:"

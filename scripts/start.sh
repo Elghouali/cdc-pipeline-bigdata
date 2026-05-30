@@ -2,11 +2,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  start.sh — Full CDC pipeline startup sequence
 #
-#  1. Start all Docker Compose services
-#  2. Wait for critical services (Postgres, Kafka, Connect, Hive, Trino)
-#  3. Register the Debezium connector
-#  4. Submit Spark streaming jobs (Bronze → Silver → Gold)
-#  5. Start the traffic simulator in the background
+#  1. Validate environment and render config templates
+#  2. Start all Docker Compose services
+#  3. Wait for critical services (Postgres, Kafka, Connect, Hive, Trino)
+#  4. Register the Debezium connector
+#  5. Submit Spark streaming jobs (Bronze → Silver → Gold)
+#  6. Start the traffic simulator in the background
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -17,6 +18,17 @@ cd "$PROJECT_DIR"
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 ok()   { echo "[$(date '+%H:%M:%S')] ✓  $*"; }
 fail() { echo "[$(date '+%H:%M:%S')] ✗  $*" >&2; exit 1; }
+
+SIM_PID=""
+
+cleanup() {
+  if [[ -n "$SIM_PID" ]]; then
+    log "Caught signal — stopping simulator (PID ${SIM_PID}) …"
+    kill "${SIM_PID}" 2>/dev/null || true
+  fi
+  log "Shutdown complete."
+}
+trap cleanup EXIT INT TERM
 
 # ── Health check helpers ───────────────────────────────────────────────────────
 
@@ -35,9 +47,11 @@ wait_http() {
 
 wait_postgres() {
   local retries=60
+  local pg_user="${POSTGRES_USER:-postgres}"
+  local pg_db="${PGDATABASE:-ecommerce}"
   log "Waiting for PostgreSQL …"
   for i in $(seq 1 "$retries"); do
-    if docker exec cdc-postgres pg_isready -U postgres -d ecommerce > /dev/null 2>&1; then
+    if docker exec cdc-postgres pg_isready -U "${pg_user}" -d "${pg_db}" > /dev/null 2>&1; then
       ok "PostgreSQL ready (attempt ${i})"
       return 0
     fi
@@ -64,7 +78,9 @@ wait_hive_metastore() {
   local retries=60
   log "Waiting for Hive Metastore (port 9083) …"
   for i in $(seq 1 "$retries"); do
-    if docker exec cdc-hive-metastore nc -z localhost 9083 > /dev/null 2>&1; then
+    # Use bash /dev/tcp instead of nc — netcat is not installed in apache/hive.
+    if docker exec cdc-hive-metastore bash -c \
+        'exec 3<>/dev/tcp/localhost/9083 && exec 3>&-' 2>/dev/null; then
       ok "Hive Metastore ready (attempt ${i})"
       return 0
     fi
@@ -83,13 +99,20 @@ spark_submit() {
       --master spark://spark-master:7077 \
       --deploy-mode client \
       "/opt/spark-apps/${job}"
-  ok "${job} submitted (running in background inside container)"
+  ok "${job} submitted (streaming — check: docker logs cdc-spark-master)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
 log "═══════════════════════════════════════════════"
 log "  CDC Pipeline — Full Startup"
 log "═══════════════════════════════════════════════"
+
+# ── Pre-flight: validate env and generate configs ─────────────────────────────
+log "Pre-flight — validating environment …"
+bash "${SCRIPT_DIR}/check_env.sh"
+log "Pre-flight — rendering config templates …"
+bash "${SCRIPT_DIR}/generate_configs.sh"
+ok "Pre-flight complete."
 
 # ── Step 1: Bring up all services ─────────────────────────────────────────────
 log "Step 1/5 — docker compose up …"
@@ -137,9 +160,9 @@ log "═════════════════════════
 log ""
 log "  UI endpoints:"
 log "    Spark Master    http://localhost:8085"
-log "    MinIO Console   http://localhost:9001   minioadmin / minioadmin"
+log "    MinIO Console   http://localhost:9001   ${MINIO_ROOT_USER:-minioadmin} / ***"
 log "    Trino UI        http://localhost:8080"
-log "    Superset        http://localhost:8088   admin / admin"
+log "    Superset        http://localhost:8088   admin / ***"
 log "    Kafka Connect   http://localhost:8083"
 log ""
 log "  Kafka topics:"
@@ -155,8 +178,8 @@ log "    docker logs -f cdc-spark-master     # Spark job output"
 log "    docker logs -f cdc-kafka-connect    # Debezium connector"
 log "    docker compose down -v              # Stop and clean up"
 log ""
-log "  Simulator PID: ${SIM_PID}  (Ctrl-C or kill ${SIM_PID} to stop traffic)"
+log "  Simulator PID: ${SIM_PID}  (Ctrl-C to stop)"
 log "═══════════════════════════════════════════════"
 
-# Keep the script alive so background jobs stay alive under process supervision
+# Keep alive so the trap fires cleanly on Ctrl-C / SIGTERM.
 wait $SIM_PID

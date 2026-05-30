@@ -103,7 +103,8 @@ INSERT INTO customers (name, email, city, segment, signup_date) VALUES
 ('Uness Urai',         'uness.urai@email.ma',         'Meknès',      'B2C',      '2024-11-12'),
 ('Viviane Violet',     'viviane.violet@email.ma',     'Casablanca',  'Premium',  '2024-11-19'),
 ('Wafaa Wahabi',       'wafaa.wahabi@email.ma',       'Oujda',       'B2C',      '2024-11-26'),
-('Yahia Yamani',       'yahia.yamani@email.ma',       'Marrakech',   'B2B',      '2024-12-03');
+('Yahia Yamani',       'yahia.yamani@email.ma',       'Marrakech',   'B2B',      '2024-12-03'),
+('Zineb Zouiten',      'zineb.zouiten@email.ma',      'Casablanca',  'B2C',      '2024-12-10');
 
 -- ── products (100 rows) ───────────────────────────────────────────────────────
 INSERT INTO products (name, category, brand, price, stock_qty) VALUES

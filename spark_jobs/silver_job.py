@@ -192,7 +192,8 @@ def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> Non
     deduped = dedup(parsed, pk)
 
     all_cols = [c for c, _ in defn["cols"]] + [m for m, _ in META_COLS] + ["updated_date"]
-    deduped.select(all_cols).createOrReplaceTempView(view)
+    # Use global_temp so the view is resolvable when defaultCatalog=iceberg.
+    deduped.select(all_cols).createOrReplaceGlobalTempView(view)
 
     non_pk   = [c for c in all_cols if c != pk]
     set_sql  = ", ".join(f"t.{c} = s.{c}" for c in non_pk)
@@ -201,7 +202,7 @@ def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> Non
 
     spark.sql(f"""
         MERGE INTO {silver} t
-        USING {view} s
+        USING global_temp.{view} s
         ON    t.{pk} = s.{pk}
         WHEN MATCHED AND s._is_deleted = true THEN
             UPDATE SET t._is_deleted = true,

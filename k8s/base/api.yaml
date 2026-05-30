@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/your-org/cdc-api:latest
+          image: ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-api:latest
           ports:
             - name: http
               containerPort: 8000
@@ -35,8 +35,21 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_HOST
               value: postgres
+            - name: DATABASE_URL
+              # Assembled from injected env vars at pod startup.
+              # Without this the API falls back to the docker-compose default
+              # which uses the wrong host and hardcoded password.
+              value: "postgresql://postgres:$(POSTGRES_PASSWORD)@postgres:5432/ecommerce"
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "kafka:9092"
+            - name: TRINO_URL
+              value: "http://trino:8080"
+            - name: KAFKA_CONNECT_URL
+              value: "http://kafka-connect:8083"
+            - name: SPARK_MASTER_URL
+              value: "http://spark-master:8080"
+            - name: SPARK_HISTORY_URL
+              value: "http://spark-master:18080"
           readinessProbe:
             httpGet:
               path: /api/health

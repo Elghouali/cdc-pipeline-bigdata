@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/your-org/cdc-frontend:latest
+          image: ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-frontend:latest
           ports:
             - name: http
               containerPort: 80

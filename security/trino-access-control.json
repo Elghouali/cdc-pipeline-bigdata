@@ -33,7 +33,7 @@
   "tables": [
     {
       "catalog": "iceberg",
-      "schema": "default",
+      "schema": "analytics",
       "table": "silver_customers",
       "privileges": ["SELECT"],
       "columns": [

@@ -5,7 +5,8 @@
 # Changes vs production:
 #   - Spark worker reduced memory for dev laptops
 #   - Restart-on-failure for streaming services
-#   - API and frontend mounts pre-wired for Phase 2/3 (uncomment when ready)
+#   - API hot-reload via volume mount
+#   - Frontend dev server with hot-reload
 
 version: "3.8"
 
@@ -26,22 +27,21 @@ services:
   kafka-connect:
     restart: on-failure
 
-  # ── API service (Phase 2) ────────────────────────────────────────────────────
+  # ── API service (hot-reload) ──────────────────────────────────────────────────
   api:
     build:
       context: ./api
       target: dev
     volumes:
       - ./api:/app
-    environment:
-      RELOAD: "true"
 
-  # ── Frontend dev server (Phase 3 — uncomment when frontend/ exists) ──────────
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     target: dev
-  #   volumes:
-  #     - ./frontend/src:/app/src
-  #   ports:
-  #     - "3000:3000"
+  # ── Frontend dev server (hot-reload) ─────────────────────────────────────────
+  # Frontend now exists — uncommented from Phase 3 placeholder.
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend/src:/app/src
+    ports:
+      - "3000:3000"

@@ -1,5 +1,5 @@
 {
-  "_comment": "Documentation only. The live rate limiting is enforced by api/middleware/rate_limit.py (SlowAPI) inside the FastAPI service. Keep this file in sync with that middleware.",
+  "_comment": "Target rate-limit policy. api/middleware/rate_limit.py does not yet exist — rate limiting is not currently enforced. This file documents the intended limits to implement via SlowAPI or equivalent middleware.",
   "key": "client IP address",
   "endpoints": {
     "/api/query": {"requests_per_minute": 30, "burst": 5},

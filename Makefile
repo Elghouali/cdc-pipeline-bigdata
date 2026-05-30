@@ -64,17 +64,17 @@ test: test-python test-frontend test-shell  ## Run all tests
 test-python:                            ## Run Python unit tests
 	@echo "── Python tests ─────────────────────────────────────"
 	@if [ -d api ]; then \
-	  cd api && python -m pytest tests/ -v --tb=short 2>&1 || true; \
+	  cd api && python -m pytest tests/ -v --tb=short; \
 	else \
-	  echo "API not yet created (Phase 2)."; \
+	  echo "API directory not found."; \
 	fi
 
 test-frontend:                          ## Run frontend unit tests (Vitest)
 	@echo "── Frontend tests ───────────────────────────────────"
 	@if [ -d frontend ]; then \
-	  cd frontend && npm run test 2>&1 || true; \
+	  cd frontend && npm run test; \
 	else \
-	  echo "Frontend not yet created (Phase 3)."; \
+	  echo "Frontend directory not found."; \
 	fi
 
 test-shell:                             ## Lint shell scripts with shellcheck
@@ -103,9 +103,9 @@ lint-python:                            ## Lint Python with ruff
 
 lint-frontend:                          ## Lint TypeScript with ESLint + type check
 	@if [ -d frontend ]; then \
-	  cd frontend && npm run lint && npm run type-check 2>&1 || true; \
+	  cd frontend && npm run lint && npm run type-check; \
 	else \
-	  echo "Frontend not yet created (Phase 3)."; \
+	  echo "Frontend directory not found."; \
 	fi
 
 lint-shell:                             ## Lint shell scripts with shellcheck
@@ -129,25 +129,35 @@ frontend-dev:                           ## Start frontend dev server locally (no
 
 # ── Spark job submission ───────────────────────────────────────────────────────
 
-spark-bronze:                           ## Submit Bronze streaming job
-	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
+spark-bronze:                           ## Submit Bronze streaming job (detached)
+	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/bronze_job.py
+	@echo "Bronze job submitted (streaming — check: docker logs cdc-spark-master)"
 
-spark-silver:                           ## Submit Silver streaming job
-	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
+spark-silver:                           ## Submit Silver streaming job (detached)
+	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/silver_job.py
+	@echo "Silver job submitted (streaming — check: docker logs cdc-spark-master)"
 
-spark-gold:                             ## Submit Gold batch job
-	$(COMPOSE) exec spark-master /opt/spark/bin/spark-submit \
+spark-gold:                             ## Submit Gold streaming job (detached)
+	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --conf spark.executor.memory=1g \
 	  /opt/spark-apps/gold_job.py
+	@echo "Gold job submitted (streaming — check: docker logs cdc-spark-master)"
 
-spark-all: spark-bronze spark-silver spark-gold  ## Submit all Spark jobs sequentially
+spark-all:                              ## Submit all Spark jobs with waits for table creation
+	$(MAKE) spark-bronze
+	@echo "Waiting 15s for Bronze to create Iceberg tables..."
+	@sleep 15
+	$(MAKE) spark-silver
+	@echo "Waiting 10s for Silver tables..."
+	@sleep 10
+	$(MAKE) spark-gold
 
 # ── Pipeline operations ────────────────────────────────────────────────────────
 

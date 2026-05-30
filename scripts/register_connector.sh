@@ -9,7 +9,7 @@ set -euo pipefail
 CONNECT_URL=${CONNECT_URL:-http://localhost:8083}
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONNECTOR_CONFIG="${SCRIPT_DIR}/../config/debezium-connector.json"
-CONNECTOR_NAME="ecommerce-postgres-connector"
+CONNECTOR_NAME="cdc-postgres"
 MAX_RETRIES=30
 RETRY_INTERVAL=5
 

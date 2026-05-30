@@ -1,5 +1,5 @@
 {
-  "name": "ecommerce-postgres-connector",
+  "name": "cdc-postgres",
   "config": {
     "connector.class":              "io.debezium.connector.postgresql.PostgresConnector",
 

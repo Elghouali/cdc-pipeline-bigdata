@@ -154,8 +154,9 @@ services:
     image: minio/minio:RELEASE.2024-01-16T16-07-38Z
     container_name: cdc-minio
     environment:
-      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER:              ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD:          ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_PROMETHEUS_AUTH_TYPE:   "public"
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -375,8 +376,16 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: cdc-alertmanager
-    command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    # envsubst expands ${SLACK_WEBHOOK_URL} before passing the config to
+    # Alertmanager — the binary itself does not expand environment variables.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        envsubst < /etc/alertmanager/alertmanager.yml > /tmp/alertmanager_resolved.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager_resolved.yml
+    environment:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/REPLACE_ME}
     ports:
       - "9093:9093"
     volumes:

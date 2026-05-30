@@ -186,11 +186,14 @@
       },
       "pluginVersion": "10.3.3",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cdc_bronze_row_count", "legendFormat": "Bronze", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cdc_silver_row_count", "legendFormat": "Silver", "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "cdc_gold_row_count", "legendFormat": "Gold", "refId": "C" }
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (topic) (kafka_topic_partition_current_offset{topic=~\"cdc\\\\.public\\\\..*\"})",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
       ],
-      "title": "Bronze / Silver / Gold Row Counts",
+      "title": "Kafka CDC Topic Message Totals",
       "type": "stat"
     },
     {
@@ -225,12 +228,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, sum(rate(cdc_pipeline_latency_ms_bucket[5m])) by (le))",
-          "legendFormat": "p95 latency",
+          "expr": "max(kafka_consumergroup_lag)",
+          "legendFormat": "Max lag",
           "refId": "A"
         }
       ],
-      "title": "Pipeline Latency p95 (ms)",
+      "title": "Max Kafka Consumer Lag (messages)",
       "type": "gauge"
     },
     {

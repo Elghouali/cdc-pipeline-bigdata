@@ -47,9 +47,21 @@ export interface Alert {
   id: number;
   title: string;
   severity: string;
+  details: Record<string, unknown> | null;
   fired_at: string;
   acknowledged_at: string | null;
   acknowledged_by: string | null;
+}
+
+export type SseOp = 'c' | 'u' | 'd' | 'r';
+
+export interface SseEvent {
+  id: number;
+  topic: string;
+  op: SseOp;
+  table: string;
+  ts: number | null;
+  payload: Record<string, unknown>;
 }
 
 export interface QueryRow {

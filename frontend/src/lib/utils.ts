@@ -36,11 +36,18 @@ export function formatLatency(ms: number | null): string {
   return `${ms}ms`;
 }
 
-/** Parse NDJSON stream response into an array of row objects. */
+/** Parse NDJSON stream response into an array of row objects.
+ *
+ * Detects backend error frames ({"error": "..."}) and throws instead of
+ * silently returning them as result rows.
+ */
 export async function parseNdjson<T>(response: Response): Promise<T[]> {
   const text = await response.text();
-  return text
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+  const rows: T[] = [];
+  for (const line of text.split('\n').filter(Boolean)) {
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    if (typeof parsed.error === 'string') throw new Error(parsed.error);
+    rows.push(parsed as T);
+  }
+  return rows;
 }

@@ -18,6 +18,13 @@ function authHeaders(): Record<string, string> {
 }
 
 async function checkOk(res: Response): Promise<void> {
+  if (res.status === 401) {
+    // Token expired or invalid — clear storage and redirect to login.
+    localStorage.removeItem('cdc_token');
+    localStorage.removeItem('cdc_user');
+    window.location.assign('/');
+    return;
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {

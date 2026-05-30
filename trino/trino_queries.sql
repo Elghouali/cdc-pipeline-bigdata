@@ -96,13 +96,22 @@ SELECT
     ), 2)                                                                AS p95_latency_sec
 FROM (
     SELECT source_table, source_ts_ms, ingestion_timestamp
-    FROM bronze_customers_cdc WHERE source_ts_ms IS NOT NULL
+    FROM bronze_customers_cdc    WHERE source_ts_ms IS NOT NULL
     UNION ALL
     SELECT source_table, source_ts_ms, ingestion_timestamp
-    FROM bronze_orders_cdc    WHERE source_ts_ms IS NOT NULL
+    FROM bronze_products_cdc     WHERE source_ts_ms IS NOT NULL
     UNION ALL
     SELECT source_table, source_ts_ms, ingestion_timestamp
-    FROM bronze_payments_cdc  WHERE source_ts_ms IS NOT NULL
+    FROM bronze_orders_cdc       WHERE source_ts_ms IS NOT NULL
+    UNION ALL
+    SELECT source_table, source_ts_ms, ingestion_timestamp
+    FROM bronze_order_items_cdc  WHERE source_ts_ms IS NOT NULL
+    UNION ALL
+    SELECT source_table, source_ts_ms, ingestion_timestamp
+    FROM bronze_payments_cdc     WHERE source_ts_ms IS NOT NULL
+    UNION ALL
+    SELECT source_table, source_ts_ms, ingestion_timestamp
+    FROM bronze_returns_cdc      WHERE source_ts_ms IS NOT NULL
 ) lat
 GROUP BY source_table
 ORDER BY avg_latency_sec DESC;
@@ -117,6 +126,7 @@ SELECT
     COUNT(*)                                     AS order_count,
     ROUND(SUM(order_total), 2)                   AS week_revenue
 FROM gold_orders
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_orders)
 GROUP BY 1, 2
 ORDER BY 1 DESC, order_count DESC;
 
@@ -125,15 +135,18 @@ ORDER BY 1 DESC, order_count DESC;
 --  KPI 5 — Total sales by period and channel
 -- ─────────────────────────────────────────────────────────────────────────────
 SELECT
-    date_format(sale_date, '%Y-%m')              AS sale_month,
+    date_format(sale_date, '%Y-%m')                                       AS sale_month,
     channel,
-    SUM(order_count)                             AS total_orders,
-    ROUND(SUM(gross_revenue), 2)                 AS gross_revenue,
-    ROUND(SUM(net_revenue),   2)                 AS net_revenue,
-    ROUND(SUM(gross_revenue) - SUM(net_revenue), 2) AS lost_revenue,
-    SUM(total_items_sold)                        AS items_sold,
-    ROUND(AVG(avg_order_value), 2)               AS avg_basket
+    SUM(order_count)                                                      AS total_orders,
+    ROUND(SUM(gross_revenue), 2)                                          AS gross_revenue,
+    ROUND(SUM(net_revenue),   2)                                          AS net_revenue,
+    ROUND(SUM(gross_revenue) - SUM(net_revenue), 2)                       AS lost_revenue,
+    SUM(total_items_sold)                                                 AS items_sold,
+    -- Weighted average: total revenue / total orders avoids the statistical
+    -- error of averaging pre-aggregated averages (AVG of AVGs ignores volume).
+    ROUND(SUM(gross_revenue) / NULLIF(SUM(order_count), 0), 2)           AS avg_basket
 FROM gold_sales_facts
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_sales_facts)
 GROUP BY 1, 2
 ORDER BY 1 DESC, gross_revenue DESC;
 
@@ -151,6 +164,7 @@ SELECT
     ROUND(pending_amount,   2)  AS pending,
     ROUND(refunded_amount * 100.0 / NULLIF(total_amount, 0), 2)  AS refund_rate_pct
 FROM gold_payments_summary
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_payments_summary)
 ORDER BY payment_month DESC, total_amount DESC;
 
 
@@ -165,6 +179,7 @@ WITH monthly AS (
         COUNT(*) FILTER (WHERE status = 'returned')  AS returned,
         COUNT(*) FILTER (WHERE status = 'delivered') AS delivered
     FROM gold_orders
+    WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_orders)
     GROUP BY 1
 )
 SELECT
@@ -185,12 +200,13 @@ ORDER BY order_month DESC;
 SELECT
     customer_segment,
     product_category,
-    SUM(order_count)                AS total_orders,
-    ROUND(SUM(gross_revenue), 2)    AS gross_revenue,
-    ROUND(SUM(net_revenue),   2)    AS net_revenue,
-    SUM(total_items_sold)           AS items_sold,
-    ROUND(AVG(avg_order_value), 2)  AS avg_basket
+    SUM(order_count)                                                    AS total_orders,
+    ROUND(SUM(gross_revenue), 2)                                        AS gross_revenue,
+    ROUND(SUM(net_revenue),   2)                                        AS net_revenue,
+    SUM(total_items_sold)                                               AS items_sold,
+    ROUND(SUM(gross_revenue) / NULLIF(SUM(order_count), 0), 2)         AS avg_basket
 FROM gold_sales_facts
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_sales_facts)
 GROUP BY 1, 2
 ORDER BY gross_revenue DESC;
 
@@ -209,6 +225,7 @@ SELECT
     ROUND(avg_order_value, 2) AS avg_basket,
     last_order_date
 FROM gold_customers
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_customers)
 ORDER BY lifetime_value DESC
 LIMIT 10;
 
@@ -223,4 +240,5 @@ SELECT
     return_count,
     ROUND(return_rate_pct, 3) AS return_rate_pct
 FROM gold_returns_summary
+WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM gold_returns_summary)
 ORDER BY return_month DESC, return_count DESC;

@@ -73,6 +73,17 @@ CREATE TABLE IF NOT EXISTS returns (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
+--  Indexes on foreign-key columns
+--  PostgreSQL never auto-creates indexes for FK columns; without them every
+--  join and ON DELETE CASCADE lookup becomes a sequential scan.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_orders_customer_id      ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id    ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product_id  ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_payments_order_id       ON payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_returns_order_id        ON returns(order_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 --  Debezium replication user
 --  wal_level=logical is already applied via docker-compose.yml command arg.
 -- ─────────────────────────────────────────────────────────────────────────────

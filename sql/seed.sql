@@ -517,25 +517,15 @@ INSERT INTO payments (order_id, payment_date, method, amount, status) VALUES
 (99,'2024-10-25','wallet',           597.00,'completed'),
 (100,'2024-10-28','credit_card',    2197.00,'completed');
 
--- ── returns (20 rows) ─────────────────────────────────────────────────────────
+-- ── returns (7 rows — one per order with status = 'returned') ────────────────
+-- Only orders 9, 22, 37, 52, 67, 79, 94 have status='returned'.
+-- Removed 9 rows that referenced cancelled/pending orders (3,12,16,29,40,48,
+-- 63,75,88) and deduplicated orders 9, 22, 37, 67 which each appeared twice.
 INSERT INTO returns (order_id, return_date, reason, status) VALUES
-(3, '2024-01-15','changed_mind',     'completed'),
-(9, '2024-02-01','defective',        'completed'),
-(16,'2024-02-21','not_as_described', 'approved'),
-(22,'2024-03-10','wrong_item',       'completed'),
-(29,'2024-04-01','changed_mind',     'completed'),
-(37,'2024-04-26','defective',        'completed'),
-(40,'2024-05-04','not_as_described', 'approved'),
-(48,'2024-05-29','changed_mind',     'rejected'),
-(52,'2024-06-11','defective',        'completed'),
-(63,'2024-07-14','wrong_item',       'completed'),
-(67,'2024-07-26','not_as_described', 'approved'),
-(75,'2024-08-20','defective',        'completed'),
-(79,'2024-09-01','changed_mind',     'completed'),
-(88,'2024-09-29','wrong_item',       'approved'),
-(94,'2024-10-17','defective',        'requested'),
-(12,'2024-02-15','other',            'rejected'),
-(22,'2024-03-12','changed_mind',     'completed'),
-(9, '2024-02-05','wrong_item',       'completed'),
-(37,'2024-04-28','not_as_described', 'approved'),
-(67,'2024-07-28','changed_mind',     'requested');
+(9,  '2024-02-01','defective',        'completed'),
+(22, '2024-03-10','wrong_item',       'completed'),
+(37, '2024-04-26','defective',        'completed'),
+(52, '2024-06-11','defective',        'completed'),
+(67, '2024-07-26','not_as_described', 'approved'),
+(79, '2024-09-01','changed_mind',     'completed'),
+(94, '2024-10-17','defective',        'requested');

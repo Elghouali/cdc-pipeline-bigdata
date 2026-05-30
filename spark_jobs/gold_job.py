@@ -304,6 +304,9 @@ def run_gold_refresh(spark: SparkSession, _df: DataFrame, batch_id: int) -> None
         refresh_gold_table(spark, "gold_returns_summary",  build_gold_returns_summary(spark),  batch_id)
     except Exception as exc:
         logger.error("Gold refresh batch %d error: %s", batch_id, exc, exc_info=True)
+        # Re-raise so Spark marks the batch as failed rather than silently
+        # continuing with stale Gold tables and no visible signal.
+        raise
 
 
 def main() -> None:

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { RefreshCw, Zap } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { fetchHealth } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,7 @@ export function TopBar() {
       }
       setLastRefresh(new Date());
     } catch {
-      // keep previous
+      /* keep previous */
     } finally {
       setRefreshing(false);
     }
@@ -52,8 +52,10 @@ export function TopBar() {
   const isDegraded = upCount !== null && totalCount !== null && upCount < totalCount && upCount > 0;
   const isDown = upCount === 0;
 
-  const statusLabel = isAllUp ? 'PIPELINE LIVE' : isDegraded ? 'DEGRADED' : isDown ? 'PIPELINE DOWN' : 'CHECKING…';
-  const statusColor = isAllUp ? '#3FB950' : isDegraded ? '#D29922' : isDown ? '#F85149' : '#8B949E';
+  const statusLabel = isAllUp ? 'All systems live' : isDegraded ? 'Degraded' : isDown ? 'Pipeline down' : 'Checking…';
+  const statusColor = isAllUp ? 'var(--accent-green)' : isDegraded ? 'var(--accent-yellow)' : isDown ? 'var(--accent-red)' : 'var(--text-dim)';
+  const statusBg = isAllUp ? '#F0FDF4' : isDegraded ? '#FEFCE8' : isDown ? '#FEF2F2' : 'var(--bg-elevated)';
+  const statusBorder = isAllUp ? '#BBF7D0' : isDegraded ? '#FEF08A' : isDown ? '#FECACA' : 'var(--border)';
 
   const label = ROUTE_LABELS[pathname] ?? 'Dashboard';
 
@@ -68,26 +70,23 @@ export function TopBar() {
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-[--border] bg-[--bg-surface] px-6">
       {/* Left: breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Zap className="h-4 w-4 text-[--accent-cyan]" strokeWidth={2.5} />
-        <span className="font-semibold text-[--text-primary]">CDC Pipeline</span>
-        <span className="text-[--text-dim]">/</span>
-        <span className="text-[--text-muted]">{label}</span>
+        <span className="font-medium text-[--text-muted]">CDC Pipeline</span>
+        <span className="text-[--border] select-none">/</span>
+        <span className="font-semibold text-[--text-primary]">{label}</span>
       </div>
 
       {/* Center: status pill */}
       <div
-        className="flex items-center gap-2 rounded-full border px-3 py-1"
-        style={{ borderColor: `${statusColor}40`, backgroundColor: `${statusColor}12` }}
+        className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors"
+        style={{ borderColor: statusBorder, backgroundColor: statusBg, color: statusColor }}
       >
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full rounded-full node-glow" style={{ backgroundColor: statusColor }} />
-          <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: statusColor }} />
-        </span>
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em]" style={{ color: statusColor }}>
-          {statusLabel}
-        </span>
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: statusColor }}
+        />
+        <span>{statusLabel}</span>
         {upCount !== null && totalCount !== null && (
-          <span className="font-mono text-[10px] text-[--text-dim]">{upCount}/{totalCount}</span>
+          <span className="font-mono opacity-60">{upCount}/{totalCount}</span>
         )}
       </div>
 
@@ -95,9 +94,9 @@ export function TopBar() {
       <div className="flex items-center gap-4">
         {avgLatency !== null && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-[0.08em] text-[--text-dim]">Avg</span>
+            <span className="text-[11px] text-[--text-dim]">Avg latency</span>
             <span className={cn(
-              'font-mono text-xs font-semibold',
+              'font-mono text-[12px] font-semibold',
               avgLatency < 100 ? 'text-[--accent-green]' :
               avgLatency < 300 ? 'text-[--accent-yellow]' : 'text-[--accent-red]'
             )}>
@@ -105,15 +104,19 @@ export function TopBar() {
             </span>
           </div>
         )}
-        <div className="flex items-center gap-1 text-[10px] text-[--text-dim]">
+        <div className="flex items-center gap-1.5 text-[11px] text-[--text-dim]">
           <RefreshCw className={cn('h-3 w-3', refreshing && 'animate-spin')} />
           <span className="font-mono">{formatLastRefresh()}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[--bg-elevated] border border-[--border] text-[10px] font-bold uppercase text-[--accent-cyan]">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[--accent] text-[10px] font-bold uppercase text-white">
             {username?.[0] ?? '?'}
           </div>
-          <button onClick={logout} className="text-[11px] text-[--text-dim] transition-colors hover:text-[--accent-red]">
+          <span className="text-[12px] font-medium text-[--text-secondary]">{username}</span>
+          <button
+            onClick={logout}
+            className="text-[11px] text-[--text-dim] transition-colors hover:text-[--accent-red] ml-1"
+          >
             Sign out
           </button>
         </div>

@@ -38,7 +38,7 @@ class Settings:
                 "KAFKA_CONNECT_URL", "http://kafka-connect:8083"
             ).rstrip("/"),
             spark_master_url=os.getenv(
-                "SPARK_MASTER_URL", "http://spark-master:8085"
+                "SPARK_MASTER_URL", "http://spark-master:8080"
             ).rstrip("/"),
             spark_history_url=os.getenv(
                 "SPARK_HISTORY_URL", "http://spark-master:18080"

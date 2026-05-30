@@ -16,13 +16,13 @@ interface PipelineNode {
 }
 
 const PIPELINE: PipelineNode[] = [
-  { id: 'postgres', label: 'PostgreSQL',    sublabel: 'WAL source',      port: '5432', serviceKey: 'postgres',      color: '#58A6FF' },
-  { id: 'debezium', label: 'Debezium',      sublabel: 'CDC connector',   port: '8083', serviceKey: 'kafka-connect', color: '#F85149' },
-  { id: 'kafka',    label: 'Kafka',         sublabel: 'Event stream',    port: '9092', serviceKey: null,            color: '#FFA657' },
-  { id: 'spark',    label: 'Spark',         sublabel: 'Stream proc.',    port: '7077', serviceKey: 'spark-master',  color: '#D29922' },
-  { id: 'minio',    label: 'MinIO',         sublabel: 'Object store',    port: '9000', serviceKey: 'minio',         color: '#3FB950' },
-  { id: 'iceberg',  label: 'Iceberg',       sublabel: 'Table format',    port: '—',    serviceKey: null,            color: '#79C0FF' },
-  { id: 'trino',    label: 'Trino',         sublabel: 'Distributed SQL', port: '8080', serviceKey: 'trino',         color: '#BC8CFF' },
+  { id: 'postgres', label: 'PostgreSQL',    sublabel: 'WAL source',      port: '5432', serviceKey: 'postgres',      color: '#2563EB' },
+  { id: 'debezium', label: 'Debezium',      sublabel: 'CDC connector',   port: '8083', serviceKey: 'kafka-connect', color: '#CF6C4F' },
+  { id: 'kafka',    label: 'Kafka',         sublabel: 'Event stream',    port: '9092', serviceKey: null,            color: '#EA580C' },
+  { id: 'spark',    label: 'Spark',         sublabel: 'Stream proc.',    port: '7077', serviceKey: 'spark-master',  color: '#CA8A04' },
+  { id: 'minio',    label: 'MinIO',         sublabel: 'Object store',    port: '9000', serviceKey: 'minio',         color: '#16A34A' },
+  { id: 'iceberg',  label: 'Iceberg',       sublabel: 'Table format',    port: '—',    serviceKey: null,            color: '#7C3AED' },
+  { id: 'trino',    label: 'Trino',         sublabel: 'Distributed SQL', port: '8080', serviceKey: 'trino',         color: '#7C3AED' },
 ];
 
 const NAV = [
@@ -53,7 +53,7 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(() => {
+    function tick() {
       const s = Math.floor((Date.now() - uptimeStart) / 1000);
       const d = Math.floor(s / 86400);
       const h = Math.floor((s % 86400) / 3600);
@@ -61,17 +61,19 @@ export function Sidebar() {
       if (d > 0) setUptimeDisplay(`${d}d ${h}h ${m}m`);
       else if (h > 0) setUptimeDisplay(`${h}h ${m}m`);
       else setUptimeDisplay(`${m}m`);
-    }, 30_000);
+    }
+    tick(); // populate immediately — don't show "0m" for the first minute
+    const id = setInterval(tick, 60_000); // minute-granularity matches the display
     return () => clearInterval(id);
   }, [uptimeStart]);
 
   return (
-    <aside className="relative flex h-screen w-60 shrink-0 flex-col border-r border-[--border] bg-[--bg-surface]">
+    <aside className="relative flex h-screen w-60 shrink-0 flex-col border-r border-[--border] bg-[--bg-sidebar]">
 
       {/* Brand */}
       <div className="flex h-14 items-center gap-3 border-b border-[--border] px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded bg-[--bg-elevated] border border-[--border]">
-          <Workflow className="h-3.5 w-3.5 text-[--accent-cyan]" strokeWidth={2.5} />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[--accent] shadow-sm">
+          <Workflow className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
         </div>
         <div>
           <p className="text-sm font-semibold text-[--text-primary] leading-none">CDC Pipeline</p>
@@ -83,8 +85,8 @@ export function Sidebar() {
       <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden">
 
         {/* Pipeline topology */}
-        <div className="px-4 my-4">
-          <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Pipeline</p>
+        <div className="px-4 my-5">
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Pipeline</p>
           <div className="relative">
             {PIPELINE.map((node, idx) => {
               const health = node.serviceKey ? healthMap[node.serviceKey] : null;
@@ -98,18 +100,17 @@ export function Sidebar() {
                   {/* Connector line */}
                   <div className="flex flex-col items-center">
                     <div
-                      className="relative mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded"
+                      className="relative mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md"
                       style={{
-                        backgroundColor: isLogical ? '#21262D' : `${node.color}18`,
-                        border: `1px solid ${isLogical ? '#30363D' : `${node.color}40`}`,
+                        backgroundColor: isLogical ? 'var(--bg-elevated)' : `${node.color}14`,
+                        border: `1px solid ${isLogical ? 'var(--border)' : `${node.color}30`}`,
                       }}
                     >
                       {!isLogical && (
                         <span
-                          className="h-1.5 w-1.5 rounded-full"
+                          className="h-1.5 w-1.5 rounded-full transition-colors"
                           style={{
-                            backgroundColor: isUp ? node.color : '#F85149',
-                            boxShadow: isUp ? `0 0 4px ${node.color}` : 'none',
+                            backgroundColor: isUp ? node.color : 'var(--accent-red)',
                           }}
                         />
                       )}
@@ -127,7 +128,7 @@ export function Sidebar() {
                     <div className="flex items-center gap-1.5">
                       <span
                         className={cn('text-[11px] font-medium leading-none', isLogical && 'text-[--text-dim]')}
-                        style={!isLogical ? { color: isUp ? node.color : '#F85149' } : undefined}
+                        style={!isLogical ? { color: isUp ? node.color : 'var(--accent-red)' } : undefined}
                       >
                         {node.label}
                       </span>
@@ -150,29 +151,29 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
-        <div className="border-t border-[--border] px-4 my-4 pt-4">
-          <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Views</p>
-          <nav className="space-y-1">
+        <div className="border-t border-[--border] px-3 my-4 pt-4">
+          <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[--text-dim]">Views</p>
+          <nav className="space-y-0.5">
             {NAV.map(({ to, icon: Icon, label }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) => cn(
-                  'group flex items-center gap-2.5 rounded-md px-4 py-3 text-[13px] font-medium transition-colors',
+                  'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150',
                   isActive
-                    ? 'bg-[--bg-elevated] text-[--text-primary]'
-                    : 'text-[--text-muted] hover:bg-[--bg-elevated] hover:text-[--text-primary]',
+                    ? 'bg-[--bg-surface] text-[--text-primary] shadow-[var(--shadow-sm)]'
+                    : 'text-[--text-muted] hover:bg-[--bg-surface]/60 hover:text-[--text-primary]',
                 )}
               >
                 {({ isActive }: { isActive: boolean }) => (
                   <>
                     <Icon
-                      className={cn('h-4 w-4 shrink-0', isActive ? 'text-[--accent-cyan]' : 'text-[--text-dim] group-hover:text-[--text-muted]')}
-                      strokeWidth={1.75}
+                      className={cn('h-4 w-4 shrink-0 transition-colors', isActive ? 'text-[--accent]' : 'text-[--text-dim] group-hover:text-[--text-muted]')}
+                      strokeWidth={isActive ? 2 : 1.75}
                     />
                     <span>{label}</span>
                     {isActive && (
-                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[--accent-cyan]" />
+                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[--accent]" />
                     )}
                   </>
                 )}
@@ -181,17 +182,17 @@ export function Sidebar() {
           </nav>
         </div>
 
-      </div>{/* end scrollable */}
+      </div>
 
       {/* Footer: uptime + user */}
       <div className="shrink-0 border-t border-[--border] px-4 py-3">
-        <div className="mb-2 flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[--accent-green]" style={{ boxShadow: '0 0 4px #3FB950' }} />
+        <div className="mb-2.5 flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-[--accent-green]" />
           <span className="font-mono text-[10px] text-[--text-dim]">UP {uptimeDisplay}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[--bg-elevated] border border-[--border] text-[9px] font-bold uppercase text-[--accent-cyan]">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[--accent] text-[9px] font-bold uppercase text-white">
               {username?.[0] ?? '?'}
             </div>
             <span className="truncate text-[11px] font-medium text-[--text-secondary]">{username}</span>
@@ -199,7 +200,7 @@ export function Sidebar() {
           <button
             onClick={logout}
             title="Sign out"
-            className="rounded p-1 text-[--text-dim] transition-colors hover:bg-[--bg-elevated] hover:text-[--accent-red]"
+            className="rounded-md p-1 text-[--text-dim] transition-colors hover:bg-[--bg-surface] hover:text-[--accent-red]"
           >
             <LogOut className="h-3.5 w-3.5" />
           </button>

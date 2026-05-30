@@ -178,7 +178,7 @@ def dedup(df: DataFrame, pk: str) -> DataFrame:
 
 
 def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> None:
-    if df.rdd.isEmpty():
+    if df.isEmpty():
         return
 
     defn   = SILVER_DEF[table]

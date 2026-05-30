@@ -6,9 +6,9 @@ import { formatNumber } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 
 const LAYER_CFG = {
-  bronze: { label: 'Bronze Layer', color: '#B08050', badge: 'bronze' as const },
-  silver: { label: 'Silver Layer', color: '#8B949E', badge: 'muted' as const },
-  gold:   { label: 'Gold Layer',   color: '#D29922', badge: 'warning' as const },
+  bronze: { label: 'Bronze Layer', color: '#92400E', badge: 'bronze' as const },
+  silver: { label: 'Silver Layer', color: '#44403C', badge: 'muted'  as const },
+  gold:   { label: 'Gold Layer',   color: '#854D0E', badge: 'warning' as const },
 };
 
 export function LayerPage({ layer }: { layer: Layer }) {
@@ -25,8 +25,8 @@ export function LayerPage({ layer }: { layer: Layer }) {
       try {
         const res = await fetchMetrics(layer);
         if (active) setData(res);
-      } catch (err: any) {
-        if (active) setError(err.message || 'Failed to load tables');
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : 'Failed to load tables');
       }
     }
     void load();
@@ -61,8 +61,8 @@ export function LayerPage({ layer }: { layer: Layer }) {
           </div>
         </div>
 
-        <div className="rounded-lg border border-[--border] bg-[--bg-surface] overflow-hidden">
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] border-b border-[--border] bg-[--bg-elevated] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-[--text-dim]">
+        <div className="rounded-xl border border-[--border] bg-[--bg-surface] overflow-hidden shadow-[var(--shadow-sm)]">
+          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] border-b border-[--border] bg-[--bg-elevated] px-4 py-3 text-[11px] font-semibold uppercase tracking-widest text-[--text-dim]">
             <span>Table Name</span>
             <span>Rows</span>
             <span>Last Updated</span>
@@ -82,7 +82,9 @@ export function LayerPage({ layer }: { layer: Layer }) {
                   <span className="font-mono text-[13px] text-[--text-primary]">{t.table}</span>
                 </div>
                 <span className="font-mono text-[13px] text-[--text-muted]">{formatNumber(t.row_count || 0)}</span>
-                <span className="font-mono text-[12px] text-[--text-dim]">just now</span>
+                <span className="font-mono text-[12px] text-[--text-dim]">
+                  {t.latest_partition ? t.latest_partition.slice(0, 19).replace('T', ' ') : '—'}
+                </span>
                 <span className="font-mono text-[13px] text-[--text-muted]">6</span>
                 <span className="font-mono text-[13px] text-[--text-muted]">45 MB</span>
                 <div><Badge variant="success">HEALTHY</Badge></div>
@@ -128,7 +130,7 @@ export function LayerPage({ layer }: { layer: Layer }) {
                 <div className="divide-y divide-[--border-subtle] text-[11px]">
                   {['id', 'customer_id', 'amount', 'status', 'created_at'].map(c => (
                     <div key={c} className="grid grid-cols-[2fr_1fr_1fr] px-3 py-2 font-mono">
-                      <span className="text-[--accent-cyan]">{c}</span>
+                      <span className="text-[--accent]">{c}</span>
                       <span className="text-[--accent-yellow]">STRING</span>
                       <span className="text-[--text-dim]">{c === 'id' ? 'NO' : 'YES'}</span>
                     </div>

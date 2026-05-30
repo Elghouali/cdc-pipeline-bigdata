@@ -83,9 +83,6 @@ def create_bronze_table(spark: SparkSession, table: str) -> None:
 
 
 def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> None:
-    if df.rdd.isEmpty():
-        return
-
     enriched = (
         df
         .withColumn("raw_str",        F.col("value").cast(StringType()))
@@ -124,10 +121,15 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
         .filter(F.col("op").isNotNull())
     )
 
-    count = enriched.count()
-    if count > 0:
-        enriched.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
-        logger.info("Batch %d | table=%-12s | rows=%d", batch_id, table, count)
+    # Cache to avoid re-computing enriched twice (isEmpty + write = two scans).
+    enriched.cache()
+    try:
+        if not enriched.isEmpty():
+            count = enriched.count()
+            enriched.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
+            logger.info("Batch %d | table=%-12s | rows=%d", batch_id, table, count)
+    finally:
+        enriched.unpersist()
 
 
 def start_table_stream(spark: SparkSession, table: str):

@@ -10,8 +10,8 @@ export function Card({ variant = 'default', className, children, ...rest }: Card
     <div
       {...rest}
       className={cn(
-        'rounded-lg border p-5',
-        variant === 'default' && 'border-[--border] bg-[--bg-surface]',
+        'rounded-xl border p-5',
+        variant === 'default' && 'border-[--border] bg-[--bg-surface] shadow-[var(--shadow-sm)]',
         variant === 'glass'   && 'border-[--border] bg-[--bg-elevated]',
         variant === 'inset'   && 'border-[--border-subtle] bg-[--bg-base]',
         className,

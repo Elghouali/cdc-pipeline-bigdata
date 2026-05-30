@@ -11,7 +11,7 @@ Environment variables:
   TRINO_PORT        default: 8080
   TRINO_USER        default: dq-checks
   TRINO_CATALOG     default: iceberg
-  TRINO_SCHEMA      default: default
+  TRINO_SCHEMA      default: analytics
   POSTGRES_HOST     default: postgres
   POSTGRES_PORT     default: 5432
   POSTGRES_DB       default: ecommerce
@@ -58,7 +58,7 @@ def trino_connection() -> "trino.dbapi.Connection":
         port=int(_env("TRINO_PORT", "8080")),
         user=_env("TRINO_USER", "dq-checks"),
         catalog=_env("TRINO_CATALOG", "iceberg"),
-        schema=_env("TRINO_SCHEMA", "default"),
+        schema=_env("TRINO_SCHEMA", "analytics"),  # all Iceberg tables live in analytics
     )
 
 
@@ -132,7 +132,7 @@ def record_alert(title: str, severity: str, details: dict) -> None:
 def run_checks() -> tuple[list[dict], dict]:
     """Execute all DQ assertions. Returns (results, new_state)."""
     catalog = _env("TRINO_CATALOG", "iceberg")
-    schema = _env("TRINO_SCHEMA", "default")
+    schema = _env("TRINO_SCHEMA", "analytics")
     results: list[dict] = []
     new_state: dict = {}
 
@@ -140,18 +140,20 @@ def run_checks() -> tuple[list[dict], dict]:
     try:
         cur = conn.cursor()
 
-        # Check 1: no NULL customer_id in silver_customers
+        # Check 1: no NULL id in silver_customers
+        # NOTE: silver_customers uses 'id' as the primary key column (matches SILVER_DEF).
+        # 'customer_id' is the Gold-layer name; Silver uses 'id'.
         null_ids = scalar_query(
             cur,
             f"SELECT COUNT(*) FROM {catalog}.{schema}.silver_customers "
-            f"WHERE customer_id IS NULL",
+            f"WHERE id IS NULL",
         )
         results.append({
             "name": "silver_customers_no_null_id",
             "passed": null_ids == 0,
             "severity": "critical",
             "message": (
-                f"silver_customers has {null_ids} rows with NULL customer_id "
+                f"silver_customers has {null_ids} rows with NULL id "
                 f"(expected 0)."
             ),
         })
@@ -170,7 +172,7 @@ def run_checks() -> tuple[list[dict], dict]:
 
         # Check 3 + 4: row-count regression vs previous run
         silver_count = scalar_query(
-            cur, f"SELECT COUNT(*) FROM {catalog}.{schema}.silver_customers")
+            cur, f"SELECT COUNT(*) FROM {catalog}.{schema}.silver_customers")  # non-deleted only handled at Gold layer
         new_state = {
             "silver_customers_count": silver_count,
             "gold_customers_count": gold_count,
@@ -246,11 +248,9 @@ def main() -> int:
             details={"failures": failures, "total_checks": len(results)},
         )
     else:
-        record_alert(
-            title="Data Quality: all checks passed",
-            severity="info",
-            details={"total_checks": len(results)},
-        )
+        # Only log success — don't insert an alert row on every clean run as
+        # that would flood pipeline_alerts with low-value "all checks passed" rows.
+        print(f"[dq_checks] all {len(results)} checks passed — no alert recorded.")
 
     # Persist state only after a clean run so a bad run cannot poison the
     # baseline used for regression detection.

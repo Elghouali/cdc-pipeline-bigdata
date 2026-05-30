@@ -29,8 +29,21 @@ jobs:
 
       - name: Create test .env
         run: |
-          cp .env.example .env
-          echo ".env created from .env.example for the integration run."
+          # .env.example is not committed — generate a safe CI .env inline.
+          cat > .env << 'EOF'
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=ci_postgres_pass
+          MINIO_ROOT_USER=minioadmin
+          MINIO_ROOT_PASSWORD=ci_minio_pass
+          MARIADB_ROOT_PASSWORD=ci_root_pass
+          MARIADB_HIVE_PASSWORD=ci_hive_pass
+          SUPERSET_SECRET_KEY=ci_superset_secret_key_for_testing_only
+          SUPERSET_ADMIN_PASSWORD=ci_superset_admin
+          API_SECRET_KEY=ci_api_secret_key_for_testing_only
+          API_ADMIN_PASSWORD=ci_admin_pass
+          SLACK_WEBHOOK_URL=https://hooks.slack.com/services/CI_PLACEHOLDER
+          EOF
+          echo ".env generated for CI integration run."
 
       - name: Install API test dependencies
         run: |

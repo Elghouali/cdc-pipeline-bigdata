@@ -44,6 +44,12 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_HOST
               value: cdc-postgres
+            - name: DATABASE_URL
+              # Assembled at pod startup using Kubernetes env-var substitution.
+              # Without this, the API falls back to the docker-compose default
+              # "postgresql://postgres:postgres@postgres:5432/ecommerce" which
+              # has the wrong host and password for a Kubernetes deployment.
+              value: "postgresql://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@cdc-postgres:{{ .Values.postgres.service.port }}/{{ .Values.postgres.database }}"
           readinessProbe:
             httpGet:
               path: /api/health

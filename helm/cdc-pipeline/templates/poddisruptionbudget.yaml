@@ -7,7 +7,10 @@ metadata:
     {{- include "cdc-pipeline.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
 spec:
-  minAvailable: 1
+  # maxUnavailable: 1 instead of minAvailable: 1 for single-replica services.
+  # minAvailable: 1 with replicas=1 blocks all voluntary disruptions —
+  # node drains and cluster maintenance become impossible indefinitely.
+  maxUnavailable: 1
   selector:
     matchLabels:
       {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
@@ -21,7 +24,10 @@ metadata:
     {{- include "cdc-pipeline.labels" . | nindent 4 }}
     app.kubernetes.io/component: kafka
 spec:
-  minAvailable: 1
+  # maxUnavailable: 1 instead of minAvailable: 1 for single-replica services.
+  # minAvailable: 1 with replicas=1 blocks all voluntary disruptions —
+  # node drains and cluster maintenance become impossible indefinitely.
+  maxUnavailable: 1
   selector:
     matchLabels:
       {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}

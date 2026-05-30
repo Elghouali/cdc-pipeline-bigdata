@@ -137,12 +137,21 @@ spec:
             - name: broker
               containerPort: 9092
           env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: KAFKA_BROKER_ID
-              value: "1"
+              # Derive broker ID from the StatefulSet ordinal (cdc-kafka-0 → 1,
+              # cdc-kafka-1 → 2, …) so scaling kafka.replicas above 1 produces
+              # unique IDs. A hardcoded "1" causes ID conflicts on multi-broker.
+              value: "$(expr 1 + $(echo $POD_NAME | sed 's/.*-//'))"
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "cdc-zookeeper:2181"
             - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://cdc-kafka:9092"
+              # Use the pod-specific headless DNS name so each broker advertises
+              # its own address; cdc-kafka (shared service) only routes to one pod.
+              value: "PLAINTEXT://$(POD_NAME).cdc-kafka-headless:9092"
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "PLAINTEXT:PLAINTEXT"
             - name: KAFKA_INTER_BROKER_LISTENER_NAME

@@ -160,8 +160,9 @@ frontend:
 
 # ── Grafana (observability) ───────────────────
 grafana:
-  # Stored in the cdc-secrets Secret; consumed via valueFrom secretKeyRef.
-  adminPassword: admin
+  # REQUIRED: supply via --set grafana.adminPassword=... or a secrets file.
+  # "admin" was a weak shipped default; now enforced required in secrets.yaml.
+  adminPassword: ""
 
 # ── Ingress ───────────────────────────────────
 ingress:

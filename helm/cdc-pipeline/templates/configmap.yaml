@@ -14,6 +14,11 @@ data:
   HIVE_METASTORE_URI: "thrift://cdc-hive-metastore:9083"
   TRINO_HOST: "cdc-trino"
   TRINO_PORT: {{ .Values.trino.service.port | quote }}
+  # Full URL forms consumed directly by the API (config.py reads these, not host+port).
+  TRINO_URL: "http://cdc-trino:{{ .Values.trino.service.port }}"
+  KAFKA_CONNECT_URL: "http://cdc-kafka-connect:8083"
+  SPARK_MASTER_URL: "http://cdc-spark-master:8080"
+  SPARK_HISTORY_URL: "http://cdc-spark-master:18080"
 
   # ── Spark defaults ───────────────────────────
   spark-defaults.conf: |
@@ -27,6 +32,9 @@ data:
     spark.hadoop.fs.s3a.path.style.access   true
     spark.hadoop.fs.s3a.impl                org.apache.hadoop.fs.s3a.S3AFileSystem
     spark.hadoop.fs.s3a.connection.ssl.enabled false
+    spark.hadoop.fs.s3a.access.key          {{ .Values.minio.rootUser }}
+    {{- /* Secret key injected as AWS_SECRET_ACCESS_KEY env var in the Spark deployment. */}}
+    spark.hadoop.fs.s3a.aws.credentials.provider org.apache.hadoop.fs.s3a.EnvironmentVariableCredentialsProvider
 
   # ── Trino catalog (iceberg) ──────────────────
   iceberg.properties: |
@@ -34,8 +42,10 @@ data:
     iceberg.catalog.type=hive_metastore
     hive.metastore.uri=thrift://cdc-hive-metastore:9083
     hive.s3.endpoint=http://cdc-minio:{{ .Values.minio.service.apiPort }}
+    hive.s3.aws-access-key={{ .Values.minio.rootUser }}
     hive.s3.path-style-access=true
     hive.s3.ssl.enabled=false
+    {{- /* hive.s3.aws-secret-key is injected via MINIO_ROOT_PASSWORD secret env var. */}}
 
   # ── Hive site ────────────────────────────────
   hive-site.xml: |
@@ -48,6 +58,15 @@ data:
       <property>
         <name>fs.s3a.endpoint</name>
         <value>http://cdc-minio:{{ .Values.minio.service.apiPort }}</value>
+      </property>
+      <property>
+        <name>fs.s3a.access.key</name>
+        <value>{{ .Values.minio.rootUser }}</value>
+      </property>
+      <property>
+        <!-- Secret key comes from the MINIO_ROOT_PASSWORD env var injected from cdc-secrets. -->
+        <name>fs.s3a.aws.credentials.provider</name>
+        <value>org.apache.hadoop.fs.s3a.EnvironmentVariableCredentialsProvider</value>
       </property>
       <property>
         <name>fs.s3a.path.style.access</name>

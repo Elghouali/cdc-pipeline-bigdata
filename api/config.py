@@ -1,7 +1,21 @@
 """Centralized environment-driven configuration for the CDC API service."""
 
+import logging
 import os
 from dataclasses import dataclass
+
+_config_logger = logging.getLogger("cdc-api.config")
+
+_INSECURE_DEFAULTS = {"change_me_secret", "change_me_api_jwt_secret_key", "secret"}
+
+
+def _warn_if_insecure(name: str, value: str) -> None:
+    if value.lower() in _INSECURE_DEFAULTS or len(value) < 16:
+        _config_logger.warning(
+            "SECURITY: %s looks like a placeholder or is too short (< 16 chars). "
+            "Set a strong random value in .env before deploying.",
+            name,
+        )
 
 
 def _split_csv(value: str) -> list[str]:
@@ -61,6 +75,11 @@ class Settings:
             connector_name=os.getenv("CONNECTOR_NAME", "cdc-postgres"),
             kafka_consumer_group=os.getenv("KAFKA_CONSUMER_GROUP", "cdc-ui-consumer"),
         )
+
+    def validate_security(self) -> None:
+        """Emit warnings for any settings that look like insecure placeholders."""
+        _warn_if_insecure("API_SECRET_KEY", self.secret_key)
+        _warn_if_insecure("API_ADMIN_PASSWORD", self.admin_password)
 
 
 settings = Settings.load()

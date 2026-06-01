@@ -83,7 +83,7 @@ def create_bronze_table(spark: SparkSession, table: str) -> None:
 
 
 def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> None:
-    enriched = (
+    parsed = (
         df
         .withColumn("raw_str",        F.col("value").cast(StringType()))
         # schemas.enable=false: the message IS the payload directly (no wrapper).
@@ -119,19 +119,25 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
             "ingestion_timestamp",
             "ingestion_date",
         )
-        # Skip heartbeat rows (op is null) and schema-change tombstones
-        .filter(F.col("op").isNotNull())
     )
 
-    # Cache so count() materialises the plan once and writeTo() reads from memory.
-    enriched.cache()
-    try:
-        count = enriched.count()
-        if count > 0:
-            enriched.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
-            logger.info("Batch %d | table=%-12s | rows=%d", batch_id, table, count)
-    finally:
-        enriched.unpersist()
+    # Split valid and invalid rows in a single pass to avoid recomputing the plan.
+    # Rows with op=null are Debezium heartbeats or schema-change tombstones.
+    valid   = parsed.filter(F.col("op").isNotNull())
+    invalid = parsed.filter(F.col("op").isNull())
+
+    # Count invalids only — cheaper than caching the full dataset. The old
+    # cache/count/writeTo pattern materialised the entire enriched dataset in
+    # executor memory before writing, causing OOM on large batches.
+    dropped = invalid.count()
+    if dropped > 0:
+        logger.warning(
+            "Batch %d | table=%-12s | dropped %d null-op rows (heartbeats/tombstones)",
+            batch_id, table, dropped,
+        )
+
+    valid.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
+    logger.info("Batch %d | table=%-12s | written", batch_id, table)
 
 
 def start_table_stream(spark: SparkSession, table: str):

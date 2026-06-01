@@ -27,6 +27,7 @@ logger = logging.getLogger("cdc-api")
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Open the DB pool and ensure schema exists; clean up on shutdown."""
     logger.info("Starting CDC API service.")
+    settings.validate_security()
     try:
         await connect()
         await init_schema()

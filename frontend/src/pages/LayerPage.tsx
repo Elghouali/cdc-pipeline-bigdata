@@ -6,9 +6,9 @@ import { formatNumber } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 
 const LAYER_CFG = {
-  bronze: { label: 'Bronze Layer', color: '#92400E', badge: 'bronze' as const },
-  silver: { label: 'Silver Layer', color: '#44403C', badge: 'muted'  as const },
-  gold:   { label: 'Gold Layer',   color: '#854D0E', badge: 'warning' as const },
+  bronze: { label: 'Bronze Layer', color: '#F59E0B', badge: 'bronze' as const },
+  silver: { label: 'Silver Layer', color: '#9CA3AF', badge: 'muted'  as const },
+  gold:   { label: 'Gold Layer',   color: '#FCD34D', badge: 'warning' as const },
 };
 
 export function LayerPage({ layer }: { layer: Layer }) {

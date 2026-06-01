@@ -143,9 +143,9 @@ function KpiTile({ label, value, unit, delta, trend, sparkData }: {
 
 // ── Layer card ────────────────────────────────────────────────────────────────
 const LAYER_CFG = {
-  bronze: { label: 'Bronze', color: '#92400E', bg: '#FFFBEB', border: '#FDE68A', badgeVariant: 'bronze' as const },
-  silver: { label: 'Silver', color: '#44403C', bg: '#FAFAF9', border: '#E7E5E4', badgeVariant: 'muted'  as const },
-  gold:   { label: 'Gold',   color: '#92400E', bg: '#FEFCE8', border: '#FEF08A', badgeVariant: 'warning' as const },
+  bronze: { label: 'Bronze', color: '#F59E0B', bg: 'rgba(245,158,11,0.07)',  border: 'rgba(245,158,11,0.18)', badgeVariant: 'bronze' as const },
+  silver: { label: 'Silver', color: '#9CA3AF', bg: 'rgba(156,163,175,0.06)', border: 'rgba(156,163,175,0.15)', badgeVariant: 'muted'  as const },
+  gold:   { label: 'Gold',   color: '#FCD34D', bg: 'rgba(252,211,77,0.07)',  border: 'rgba(252,211,77,0.18)', badgeVariant: 'warning' as const },
 };
 
 function LayerCard({ layer, data }: { layer: Layer; data: MetricsResponse | undefined }) {
@@ -301,7 +301,7 @@ export function DashboardPage() {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-widest text-[--text-dim]">Kafka Events</p>
-              <span className="flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-2 py-0.5">
+              <span className="flex items-center gap-1.5 rounded-full border border-[--accent-green]/20 bg-[--accent-green]/10 px-2 py-0.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-[--accent-green] node-glow" />
                 <span className="font-mono text-[9px] font-semibold text-[--accent-green]">LIVE</span>
               </span>

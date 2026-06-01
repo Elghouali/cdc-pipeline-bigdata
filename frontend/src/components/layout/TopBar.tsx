@@ -54,8 +54,8 @@ export function TopBar() {
 
   const statusLabel = isAllUp ? 'All systems live' : isDegraded ? 'Degraded' : isDown ? 'Pipeline down' : 'Checking…';
   const statusColor = isAllUp ? 'var(--accent-green)' : isDegraded ? 'var(--accent-yellow)' : isDown ? 'var(--accent-red)' : 'var(--text-dim)';
-  const statusBg = isAllUp ? '#F0FDF4' : isDegraded ? '#FEFCE8' : isDown ? '#FEF2F2' : 'var(--bg-elevated)';
-  const statusBorder = isAllUp ? '#BBF7D0' : isDegraded ? '#FEF08A' : isDown ? '#FECACA' : 'var(--border)';
+  const statusBg = isAllUp ? 'rgba(52,211,153,0.08)' : isDegraded ? 'rgba(252,211,77,0.08)' : isDown ? 'rgba(248,113,113,0.08)' : 'var(--bg-elevated)';
+  const statusBorder = isAllUp ? 'rgba(52,211,153,0.25)' : isDegraded ? 'rgba(252,211,77,0.25)' : isDown ? 'rgba(248,113,113,0.25)' : 'var(--border)';
 
   const label = ROUTE_LABELS[pathname] ?? 'Dashboard';
 

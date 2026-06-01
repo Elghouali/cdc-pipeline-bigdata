@@ -111,14 +111,14 @@ export function LoginPage() {
           {/* Layer badges */}
           <div className="flex items-center gap-3">
             {[
-              { label: 'Bronze', color: '#92400E', bg: '#FEF3C7' },
-              { label: 'Silver', color: '#44403C', bg: '#F5F5F4' },
-              { label: 'Gold',   color: '#92400E', bg: '#FEF9C3' },
+              { label: 'Bronze', color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' },
+              { label: 'Silver', color: '#9CA3AF', bg: 'rgba(156,163,175,0.08)' },
+              { label: 'Gold',   color: '#FCD34D', bg: 'rgba(252,211,77,0.1)' },
             ].map(layer => (
               <span
                 key={layer.label}
                 className="flex items-center gap-2 rounded-full border px-4 py-1.5 text-[11px] font-semibold tracking-wide"
-                style={{ backgroundColor: layer.bg, borderColor: `${layer.color}20`, color: layer.color }}
+                style={{ backgroundColor: layer.bg, borderColor: `${layer.color}30`, color: layer.color }}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: layer.color }} />
                 {layer.label.toUpperCase()}
@@ -150,9 +150,9 @@ export function LoginPage() {
 
           {/* Error Banner */}
           {error && (
-            <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-              <p className="text-[13px] text-red-700">
+            <div className="mb-6 flex items-start gap-3 rounded-xl border border-[--accent-red]/20 bg-[--accent-red]/10 p-4">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[--accent-red]" />
+              <p className="text-[13px] text-[--accent-red]">
                 {error.includes('fetch') ? 'Cannot reach server. Check your connection.' : 'Invalid username or password.'}
               </p>
             </div>

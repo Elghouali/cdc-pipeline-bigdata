@@ -4,14 +4,14 @@ import type { ReactNode } from 'react';
 type Variant = 'success' | 'error' | 'warning' | 'info' | 'muted' | 'purple' | 'orange' | 'bronze';
 
 const VARIANTS: Record<Variant, string> = {
-  success: 'bg-green-50  text-green-700  border-green-200',
-  error:   'bg-red-50    text-red-700    border-red-200',
-  warning: 'bg-amber-50  text-amber-700  border-amber-200',
-  info:    'bg-blue-50   text-blue-700   border-blue-200',
-  muted:   'bg-stone-100 text-stone-600  border-stone-200',
-  purple:  'bg-violet-50 text-violet-700 border-violet-200',
-  orange:  'bg-orange-50 text-orange-700 border-orange-200',
-  bronze:  'bg-amber-50  text-amber-800  border-amber-200',
+  success: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+  error:   'bg-red-500/10     text-red-400     border-red-500/25',
+  warning: 'bg-amber-500/10   text-amber-400   border-amber-500/25',
+  info:    'bg-blue-500/10    text-blue-400    border-blue-500/25',
+  muted:   'bg-white/5        text-[#878787]   border-white/10',
+  purple:  'bg-violet-500/10  text-violet-400  border-violet-500/25',
+  orange:  'bg-orange-500/10  text-orange-400  border-orange-500/25',
+  bronze:  'bg-amber-500/10   text-amber-400   border-amber-500/25',
 };
 
 export function Badge({ variant = 'muted', children, className }: {

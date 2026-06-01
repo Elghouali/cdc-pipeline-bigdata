@@ -191,7 +191,7 @@ export function QueryPage() {
           <CodeMirror
             value={query}
             height="250px"
-            theme="light"
+            theme="dark"
             extensions={[sql()]}
             onChange={(val) => setQuery(val)}
             basicSetup={{ lineNumbers: true, highlightActiveLineGutter: true, foldGutter: true }}
@@ -215,9 +215,9 @@ export function QueryPage() {
 
           <div className="flex-1 overflow-auto bg-[--bg-base]">
             {error ? (
-              <div className="m-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-                <p className="font-mono text-[12px] text-red-700">{error}</p>
+              <div className="m-4 flex items-start gap-3 rounded-xl border border-[--accent-red]/20 bg-[--accent-red]/10 p-4">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[--accent-red]" />
+                <p className="font-mono text-[12px] text-[--accent-red]">{error}</p>
               </div>
             ) : results === null ? (
               <div className="flex h-full items-center justify-center text-sm text-[--text-muted]">

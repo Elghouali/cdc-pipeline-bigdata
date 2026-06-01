@@ -5,36 +5,44 @@ title CDC Pipeline — Vue Architecture Complète (21 services)
 
 left to right direction
 
-skinparam {
-    backgroundColor        #1A1A1A
-    defaultFontColor       #ECECEC
-    defaultFontName        "Segoe UI"
-    defaultFontSize        12
-    ArrowColor             #CF6C4F
-    ArrowThickness         1.5
-    TitleFontColor         #ECECEC
-    TitleFontSize          16
-    TitleBorderRoundCorner 8
-    PackageBorderThickness 1.5
-    PackageFontSize        12
-    PackageFontStyle       bold
-    NoteBackgroundColor    #212121
-    NoteBorderColor        #444444
-    NoteFontColor          #ECECEC
-}
+skinparam backgroundColor       #1A1A1A
+skinparam defaultFontColor      #ECECEC
+skinparam defaultFontName       "Segoe UI"
+skinparam defaultFontSize       12
+skinparam ArrowColor            #CF6C4F
+skinparam ArrowThickness        1.5
+skinparam TitleFontColor        #ECECEC
+skinparam TitleFontSize         15
+skinparam PackageBorderThickness 1.5
+skinparam PackageFontStyle      bold
+skinparam PackageFontColor      #ECECEC
+skinparam NoteBackgroundColor   #212121
+skinparam NoteBorderColor       #555555
+skinparam NoteFontColor         #ECECEC
+skinparam ComponentBorderColor  #555555
+skinparam ComponentFontColor    #ECECEC
+skinparam DatabaseBorderColor   #555555
+skinparam DatabaseFontColor     #ECECEC
+skinparam QueueBorderColor      #555555
+skinparam QueueFontColor        #ECECEC
+skinparam StorageBorderColor    #555555
+skinparam StorageFontColor      #ECECEC
+skinparam CollectionsBorderColor #555555
+skinparam CollectionsFontColor  #ECECEC
+skinparam LegendBackgroundColor #212121
+skinparam LegendBorderColor     #555555
+skinparam LegendFontColor       #ECECEC
 
 ' ═══════════════════════════════════════════════════════════
 ' LAYER 1 — SOURCE
 ' ═══════════════════════════════════════════════════════════
-package "SOURCE" as PKG_SRC #line:3B82F6;line.bold;back:#1A1F2E {
+package "SOURCE" as PKG_SRC #1A1F2E {
 
-    database "PostgreSQL 15\n<size:10><color:#60A5FA>:5432</color></size>" as PG #1A1F2E;line:3B82F6 {
-    }
+    database "PostgreSQL 15\n<color:#60A5FA><b>:5432</b></color>\nwal_level=logical" as PG #1A1F2E
 
     note bottom of PG #1A1F2E
         <color:#60A5FA>wal_level = logical</color>
         max_wal_senders = 4
-        max_replication_slots = 4
         Publication : debezium_pub
         6 tables surveillées
     end note
@@ -43,80 +51,80 @@ package "SOURCE" as PKG_SRC #line:3B82F6;line.bold;back:#1A1F2E {
 ' ═══════════════════════════════════════════════════════════
 ' LAYER 2 — INGESTION
 ' ═══════════════════════════════════════════════════════════
-package "INGESTION" as PKG_ING #line:FCD34D;line.bold;back:#1F1A0F {
+package "INGESTION" as PKG_ING #1F1A0F {
 
-    component "Debezium 2.5\nKafka Connect\n<size:10><color:#FCD34D>:8083</color></size>" as DZ #1F1A0F;line:FCD34D
+    component "Debezium 2.5\nKafka Connect\n<color:#FCD34D><b>:8083</b></color>" as DZ #1F1A0F
 
-    queue "Apache Kafka\n<size:10><color:#F87171>6 topics · :9092</color></size>\ncdc.public.*" as KF #1F0F0F;line:F87171
+    queue "Apache Kafka\n<color:#F87171><b>6 topics · :9092</b></color>\ncdc.public.*" as KF #1F0F0F
 }
 
 ' ═══════════════════════════════════════════════════════════
 ' LAYER 3 — TRAITEMENT
 ' ═══════════════════════════════════════════════════════════
-package "TRAITEMENT" as PKG_PROC #line:A78BFA;line.bold;back:#1A1A2A {
+package "TRAITEMENT" as PKG_PROC #1A1A2A {
 
-    component "Spark Master\n<size:10><color:#A78BFA>:7077</color></size>" as SM #1A1A2A;line:A78BFA
-    component "Spark Worker\n<size:10>1 Go RAM · 2 cores</size>" as SW #1A1A2A;line:A78BFA
+    component "Spark Master\n<color:#A78BFA><b>:7077</b></color>" as SM #1A1A2A
+    component "Spark Worker\n1 Go RAM · 2 cores" as SW #1A1A2A
 
-    package "Jobs Streaming" as JOBS #line:555555;back:#212121 {
-        component "bronze_job.py\n<size:10><color:#F59E0B>Trigger 30s · 6 streams</color></size>" as BJ #212121;line:F59E0B
-        component "silver_job.py\n<size:10><color:#9CA3AF>Trigger 60s · MERGE INTO</color></size>" as SJ #212121;line:9CA3AF
-        component "gold_job.py\n<size:10><color:#FCD34D>Trigger 5min · overwrite</color></size>" as GJ #212121;line:FCD34D
+    package "Jobs Streaming" as JOBS #212121 {
+        component "bronze_job.py\n<color:#F59E0B>Trigger 30s · 6 streams indép.</color>" as BJ #212121
+        component "silver_job.py\n<color:#9CA3AF>Trigger 60s · MERGE INTO</color>" as SJ #212121
+        component "gold_job.py\n<color:#FCD34D>Trigger 5min · overwritePartitions</color>" as GJ #212121
     }
 }
 
 ' ═══════════════════════════════════════════════════════════
 ' LAYER 4 — STOCKAGE MEDALLION
 ' ═══════════════════════════════════════════════════════════
-package "STOCKAGE MEDALLION" as PKG_STOR #line:34D399;line.bold;back:#0F1A14 {
+package "STOCKAGE MEDALLION" as PKG_STOR #0F1A14 {
 
-    storage "MinIO\n<size:10><color:#34D399>:9000 · S3-compatible</color></size>\nParquet / Snappy" as MN #0F1A14;line:34D399
+    storage "MinIO\n<color:#34D399><b>:9000</b></color>\nParquet / Snappy" as MN #0F1A14
 
-    database "Hive Metastore\n<size:10><color:#34D399>:9083 — MariaDB :3306</color></size>\nCatalogue Iceberg" as HM #0F1A14;line:34D399
+    database "Hive Metastore\n<color:#34D399><b>:9083</b></color>\nMariaDB :3306" as HM #0F1A14
 
-    package "BRONZE" as BRZ #line:F59E0B;back:#1A150A {
-        collections "6 tables Iceberg\n<size:10>partition : ingestion_date\nAppend-only · audit trail</size>" as BT #1A150A;line:F59E0B
+    package "BRONZE" as BRZ #1A150A {
+        collections "6 tables Iceberg\n<color:#F59E0B>partition : ingestion_date</color>\nAppend-only · audit trail" as BT #1A150A
     }
 
-    package "SILVER" as SLV #line:9CA3AF;back:#0F1014 {
-        collections "6 tables Iceberg\n<size:10>partition : updated_date\nDédup + typage + soft-delete</size>" as ST #0F1014;line:9CA3AF
+    package "SILVER" as SLV #0F1014 {
+        collections "6 tables Iceberg\n<color:#9CA3AF>partition : updated_date</color>\nDédup + typage + soft-delete" as ST #0F1014
     }
 
-    package "GOLD" as GLD #line:FCD34D;back:#1A1A08 {
-        collections "5 tables Iceberg\n<size:10>partition : snapshot_date\nAgrégats métier · analytics</size>" as GT #1A1A08;line:FCD34D
+    package "GOLD" as GLD #1A1A08 {
+        collections "5 tables Iceberg\n<color:#FCD34D>partition : snapshot_date</color>\nAgrégats métier · analytics" as GT #1A1A08
     }
 }
 
 ' ═══════════════════════════════════════════════════════════
 ' LAYER 5 — EXPOSITION
 ' ═══════════════════════════════════════════════════════════
-package "EXPOSITION" as PKG_EXP #line:CF6C4F;line.bold;back:#1F120E {
+package "EXPOSITION" as PKG_EXP #1F120E {
 
-    component "Trino 435\n<size:10><color:#CF6C4F>:8080 · SQL distribué</color></size>\nCatalogue iceberg.analytics" as TR #1F120E;line:CF6C4F
+    component "Trino 435\n<color:#CF6C4F><b>:8080</b></color>\nSQL distribué · iceberg.analytics" as TR #1F120E
 
-    component "FastAPI\n<size:10><color:#CF6C4F>:8000 · JWT HS256</color></size>\n13 endpoints · asyncpg" as API #1F120E;line:CF6C4F
+    component "FastAPI\n<color:#CF6C4F><b>:8000</b></color>\nJWT HS256 · 13 endpoints" as API #1F120E
 
-    component "React Console\n<size:10><color:#CF6C4F>:3000 · Vite · Tailwind</color></size>\n6 routes · thème sombre" as UI #1F120E;line:CF6C4F
+    component "React Console\n<color:#CF6C4F><b>:3000</b></color>\nVite · Tailwind · 6 routes" as UI #1F120E
 }
 
 ' ═══════════════════════════════════════════════════════════
 ' MONITORING (transversal)
 ' ═══════════════════════════════════════════════════════════
-package "MONITORING  (transversal à toutes les couches)" as PKG_MON #line:555555;line.dashed;back:#111111 {
+package "MONITORING  (transversal à toutes les couches)" as PKG_MON #111111 {
 
-    component "Prometheus\n:9090"     as PROM #111111;line:F87171
-    component "Grafana\n:3001"        as GRF  #111111;line:FCD34D
-    component "Loki + Promtail"       as LOKI #111111;line:60A5FA
-    component "Alertmanager\n:9093"   as ALM  #111111;line:A78BFA
-    component "Kafka Exporter\n:9308" as KE   #111111;line:F87171
-    component "PG Exporter\n:9187"   as PE    #111111;line:60A5FA
+    component "Prometheus\n:9090"       as PROM #111111
+    component "Grafana\n:3001"          as GRF  #111111
+    component "Loki + Promtail"         as LOKI #111111
+    component "Alertmanager\n:9093"     as ALM  #111111
+    component "Kafka Exporter\n:9308"   as KE   #111111
+    component "PG Exporter\n:9187"      as PE   #111111
 }
 
 ' ═══════════════════════════════════════════════════════════
 ' FLUX DE DONNÉES PRINCIPAL
 ' ═══════════════════════════════════════════════════════════
 PG  -right-> DZ  : WAL stream\n(pgoutput plugin)
-DZ  -right-> KF  : JSON envelope\n{op, before, after,\nsource.ts_ms}
+DZ  -right-> KF  : JSON envelope\n{op, before, after, source.ts_ms}
 
 KF  -right-> BJ  : readStream\nmaxOffsets = 10 000
 KF  ..>      SJ  : (via Bronze)
@@ -128,40 +136,39 @@ ST  -right-> GT  : overwritePartitions\n5 tables Gold
 
 MN  -up->    TR  : Parquet scan\n(pushdown filters)
 HM  -up->    TR  : Schéma / partitions
-TR  -right-> API : HTTP queries\nNDJSON stream
+TR  -right-> API : HTTP queries · NDJSON
 API -right-> UI  : REST JSON\nSSE /api/events/stream
 
 SM  -down->  BJ
 SM  -down->  SJ
 SM  -down->  GJ
-SW  -up->    SM  : enregistrement worker
+SW  -up->    SM  : enregistrement
 
 ' ═══════════════════════════════════════════════════════════
 ' MONITORING SCRAPE (pointillés)
 ' ═══════════════════════════════════════════════════════════
-PROM .up.> PG   : scrape :5432
-PROM .up.> KF   : via KE
-PROM .up.> MN   : scrape :9000
-PROM .up.> API  : scrape /metrics
-PE   .up.> PG
-KE   .up.> KF
+PROM .up.> PG  : scrape :5432
+PROM .up.> MN  : scrape :9000
+PROM .up.> API : scrape /metrics
 PROM ..>   KE
 PROM ..>   PE
+PE   .up.> PG
+KE   .up.> KF
 PROM -right-> ALM : règles d'alerte\nSlack webhook
-LOKI .up.>   GRF  : datasource
-PROM ..>     GRF  : datasource
+LOKI ..>   GRF  : datasource
+PROM ..>   GRF  : datasource
 
 ' ═══════════════════════════════════════════════════════════
 ' LÉGENDE
 ' ═══════════════════════════════════════════════════════════
 legend bottom
-  |=      Symbole       |= Signification                         |
-  | <b>--></b>          | Flux de données principal              |
-  | <b>..></b>          | Flux indirect / dérivé                 |
-  | <b>..> (monitor)</b>| Scrape Prometheus                      |
-  | <b>BRONZE</b>       | Ingestion brute · append-only          |
-  | <b>SILVER</b>       | Dédup + typage + MERGE INTO Iceberg    |
-  | <b>GOLD</b>         | Agrégats métier · refresh toutes 5 min |
+  |=         Symbole          |= Signification                         |
+  | <b>--></b>                | Flux de données principal              |
+  | <b>..></b>                | Flux indirect / dérivé                 |
+  | <b>..> (monitoring)</b>   | Scrape Prometheus                      |
+  | <b>BRONZE</b>             | Ingestion brute · append-only          |
+  | <b>SILVER</b>             | Dédup + typage + MERGE INTO Iceberg    |
+  | <b>GOLD</b>               | Agrégats métier · refresh toutes 5 min |
 endlegend
 
 @enduml

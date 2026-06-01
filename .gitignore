@@ -68,3 +68,5 @@ test-report/
 # ── Helm ──────────────────────────────────────────────────────────────────────
 helm/*/charts/
 helm/*/Chart.lock
+rapport/plantuml.jar
+rapport/*.jar

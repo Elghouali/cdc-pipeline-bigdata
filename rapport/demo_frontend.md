@@ -1,249 +1,210 @@
 # Script de Démonstration — Console React CDC Pipeline
 
-> **URL :** http://84.8.218.197:3000
-> **Durée estimée :** 4 à 6 minutes
-> **Prérequis :** pipeline complet démarré, Spark jobs actifs
+**URL :** http://84.8.218.197:3000
+**Durée estimée :** 4 à 6 minutes
 
 ---
 
-## ÉTAPE 1 — Page de connexion (0:00 – 0:30)
+## ÉTAPE 1 — Connexion (0:00 – 0:30)
 
-**URL :** http://84.8.218.197:3000/login
+Nous allons maintenant accéder à la console opérationnelle de notre pipeline CDC.
+L'interface est développée en React 18 avec TypeScript et Tailwind CSS en thème sombre.
 
-**Ce qu'on fait :**
-- Saisir les identifiants :
-  - Username : `admin`
-  - Password : `admin`
-- Cliquer **Continue**
+L'accès est protégé par une authentification JWT.
+Chaque connexion génère un token signé avec l'algorithme HS256, valide pendant 60 minutes.
+Les mots de passe sont stockés en base de données sous forme de hash bcrypt —
+aucun mot de passe en clair n'est jamais persisté.
 
-**Ce qu'on dit :**
-> "L'accès est protégé par un token JWT signé HS256.
-> L'authentification est gérée par FastAPI — bcrypt côté stockage."
+Nous nous connectons avec le compte administrateur.
 
 ---
 
 ## ÉTAPE 2 — Dashboard KPI (0:30 – 1:30)
 
-**URL :** http://84.8.218.197:3000/dashboard
+Nous sommes maintenant sur le dashboard principal.
 
-**Ce qu'on fait :**
+En haut, quatre indicateurs clés s'affichent avec une animation de comptage au chargement :
+le chiffre d'affaires total, le nombre de commandes du jour, les clients actifs, et les retours.
+Chaque carte affiche une tendance — verte pour une hausse, rouge pour une baisse —
+ainsi qu'une sparkline miniature qui montre l'évolution sur les derniers points.
 
-1. **KPI tiles** (4 cartes en haut) :
-   - Montrer les compteurs animés au chargement
-   - Total Revenue · Orders Today · Active Customers · Returns
-   - Pointer les flèches trend ↑ vert / ↓ rouge et les sparklines
+À gauche, les trois couches Medallion sont représentées sous forme de cartes :
+Bronze, Silver et Gold, chacune avec le nombre total de lignes et des barres de volume
+normalisées par table. Ces données sont récupérées en temps réel depuis Trino
+via l'endpoint `/api/metrics/{layer}` avec un cache de 30 secondes.
 
-2. **Medallion Layers** (colonne gauche) :
-   - 3 cartes Bronze / Silver / Gold avec row counts
-   - Barres de volume normalisées par table
-   - Ces données viennent de Trino via `/api/metrics/{layer}`
+Au centre-droite, le flux Kafka affiche les événements CDC en direct.
+Chaque événement est coloré selon son type : vert pour INSERT, orange pour UPDATE,
+rouge pour DELETE. On voit en temps réel les changements qui se produisent
+dans la base PostgreSQL source.
 
-3. **Kafka Events feed** (zone droite) :
-   - Badges INSERT (vert) / UPDATE (orange) / DELETE (rouge)
-   - Flux qui se rafraîchit automatiquement
-   - Colonnes : Time · Op · Table · Payload
-
-4. **Service Health** (bas) :
-   - 5 services avec point vert = UP et latence en ms
-   - Cliquer **Refresh** pour déclencher un nouveau sondage parallèle
-
-**Ce qu'on dit :**
-> "Le dashboard se rafraîchit toutes les 30 secondes.
-> La santé des services est sondée en parallèle via `/api/health` —
-> PostgreSQL, Trino, Kafka Connect, Spark et MinIO."
+En bas, cinq cartes de santé affichent l'état de chaque service du pipeline :
+PostgreSQL, Trino, Kafka Connect, Spark et MinIO.
+Chaque service est sondé en parallèle toutes les 30 secondes
+et la latence de réponse est affichée en millisecondes.
 
 ---
 
-## ÉTAPE 3 — Bronze Layer (1:30 – 2:15)
+## ÉTAPE 3 — Couche Bronze (1:30 – 2:15)
 
-**URL :** http://84.8.218.197:3000/bronze
+Passons maintenant à la couche Bronze.
 
-**Ce qu'on fait :**
+Cette page liste les six tables Iceberg d'ingestion brute.
+Pour chaque table, on voit le nombre de lignes, la date de dernière mise à jour,
+et le statut de santé.
 
-1. Montrer les 6 tables Iceberg :
-   - bronze_customers_cdc · bronze_orders_cdc · bronze_order_items_cdc
-   - bronze_payments_cdc · bronze_products_cdc · bronze_returns_cdc
+La couche Bronze est append-only — aucune modification, aucune transformation.
+Chaque événement Debezium est conservé tel quel avec l'intégralité de ses métadonnées :
+l'opération CDC, le payload JSON avant et après la modification,
+l'horodatage du WAL PostgreSQL, et la date d'ingestion Spark.
 
-2. **Cliquer sur `bronze_orders_cdc`** → tiroir latéral :
-   - Montrer les colonnes Bronze : `kafka_key` · `op` · `before_payload`
-     · `after_payload` · `source_ts_ms` · `ingestion_date`
-   - Souligner que `raw_payload` conserve le JSON Debezium complet
-
-**Ce qu'on dit :**
-> "Bronze est append-only — zéro transformation.
-> Chaque événement Debezium est stocké tel quel avec ses métadonnées Kafka.
-> Partitionné par `ingestion_date` pour optimiser le pruning Trino."
-
----
-
-## ÉTAPE 4 — Silver Layer (2:15 – 2:50)
-
-**URL :** http://84.8.218.197:3000/silver
-
-**Ce qu'on fait :**
-
-1. Comparer les row counts avec Bronze
-   *(Silver = état courant dédupliqué, Bronze = historique complet)*
-
-2. **Cliquer sur `silver_orders`** → tiroir latéral :
-   - Schéma typé : `id INT` · `order_date DATE` · `status STRING`
-   - Colonnes métadonnées : `_op` · `_source_ts_ms` · `_updated_at` · `_is_deleted`
-
-**Ce qu'on dit :**
-> "Silver contient l'état courant après déduplication par clé primaire.
-> Le `MERGE INTO` Iceberg garantit une seule ligne par entité.
-> `_is_deleted = true` remplace la suppression physique — l'historique est préservé."
+Si l'on clique sur une table, un tiroir latéral s'ouvre et affiche le schéma complet.
+On y retrouve les 15 colonnes Bronze, notamment `op` qui contient le type d'opération,
+`before_payload` et `after_payload` qui sont les états JSON de la ligne avant et après,
+et `ingestion_date` qui est la colonne de partition utilisée par Trino
+pour élaguer les fichiers Parquet lors des requêtes.
 
 ---
 
-## ÉTAPE 5 — Gold Layer (2:50 – 3:20)
+## ÉTAPE 4 — Couche Silver (2:15 – 2:50)
 
-**URL :** http://84.8.218.197:3000/gold
+La couche Silver contient les mêmes six entités, mais avec un nombre de lignes différent.
 
-**Ce qu'on fait :**
+Contrairement à Bronze qui accumule tous les événements,
+Silver ne contient que l'état courant de chaque entité après déduplication.
+Le job Spark applique une fenêtre de partitionnement par clé primaire,
+triée par horodatage WAL décroissant, et ne conserve que la version la plus récente.
 
-1. Montrer les 5 tables analytiques :
-   - gold_customers · gold_orders · gold_sales_facts
-   - gold_payments_summary · gold_returns_summary
+Les types sont forts : les dates Debezium — encodées en entiers depuis l'epoch Unix —
+sont converties en DateType Spark. Les montants passent en DoubleType.
 
-2. **Cliquer sur `gold_sales_facts`** → tiroir latéral :
-   - Colonnes : `sale_date` · `channel` · `customer_segment`
-     · `product_category` · `gross_revenue` · `net_revenue`
-     · `order_count` · `avg_order_value`
+Les suppressions ne sont pas physiques. Quand un enregistrement est supprimé
+dans PostgreSQL, la colonne `_is_deleted` passe à `true` dans Silver.
+L'historique est ainsi toujours préservé pour l'audit et le time-travel Iceberg.
 
-**Ce qu'on dit :**
-> "Gold est directement consommable par des outils BI.
-> Rafraîchissement toutes les 5 minutes via un heartbeat Spark sur silver_orders —
-> réécriture idempotente par `overwritePartitions()`."
+La mise à jour dans Silver se fait via un `MERGE INTO` Iceberg atomique,
+qui gère en une seule instruction les insertions, mises à jour et suppressions logiques.
 
 ---
 
-## ÉTAPE 6 — Query Console (3:20 – 4:30)
+## ÉTAPE 5 — Couche Gold (2:50 – 3:20)
 
-**URL :** http://84.8.218.197:3000/query
+La couche Gold est la couche analytique finale, directement consommable par des outils BI.
 
-**Ce qu'on fait :**
+Elle contient cinq tables d'agrégats métier.
+`gold_customers` est une vue 360 de chaque client : nombre de commandes,
+montant total dépensé, valeur moyenne par commande, dates de première et dernière commande.
+`gold_orders` enrichit chaque commande avec les informations client, paiement et retours.
+`gold_sales_facts` contient les KPIs journaliers segmentés par canal de vente,
+segment client et catégorie produit — c'est la table centrale pour l'analyse des revenus.
+`gold_payments_summary` et `gold_returns_summary` sont des synthèses mensuelles.
 
-1. Montrer le **Data Explorer** à gauche (arborescence Bronze / Silver)
+Ces cinq tables sont rafraîchies toutes les 5 minutes par un heartbeat Spark
+déclenché à chaque nouveau micro-batch sur silver_orders.
+Chaque rafraîchissement réécrit la partition du jour de manière idempotente.
 
-2. **Requête 1 — Revenus par canal** — coller dans l'éditeur et lancer `Ctrl+Enter` :
+---
+
+## ÉTAPE 6 — Console SQL (3:20 – 4:30)
+
+Voici la console SQL, branchée directement sur le moteur Trino 435.
+
+À gauche, l'explorateur de données présente l'arborescence des tables
+par couche Medallion avec leurs colonnes.
+
+L'éditeur central utilise Monaco — le même éditeur que VS Code —
+avec coloration syntaxique SQL.
+
+Exécutons quelques requêtes analytiques sur la couche Gold.
+
+La première requête nous donne les revenus bruts par canal de vente.
+On appuie sur Ctrl+Entrée pour lancer l'exécution.
+Les résultats arrivent en streaming ligne par ligne depuis Trino,
+en format NDJSON via l'API FastAPI, et s'affichent dans le tableau.
+Le temps d'exécution est affiché en bas.
+
+La deuxième requête retourne les dix clients qui ont le plus dépensé sur la plateforme,
+avec leur segment et leur nombre total de commandes.
+
+La troisième requête mesure la latence CDC end-to-end en comparant
+l'horodatage d'ingestion Spark avec l'horodatage WAL PostgreSQL.
+On voit que la latence moyenne de passage à la couche Bronze
+est bien inférieure à 30 secondes, conformément à notre objectif.
+
+Seuls les SELECT sont autorisés. Toute instruction DDL ou DML —
+DROP, CREATE, INSERT, UPDATE, DELETE — est bloquée côté API
+avec une réponse HTTP 400, avant même d'atteindre Trino.
+
+On peut télécharger les résultats en CSV en cliquant sur Export CSV.
+
+---
+
+## ÉTAPE 7 — Flux d'événements en temps réel (4:30 – 5:10)
+
+Cette dernière page affiche le flux d'événements CDC en temps réel.
+
+La connexion est établie via Server-Sent Events vers l'endpoint `/api/events/stream`.
+Un consommateur Kafka est ouvert par connexion navigateur avec un identifiant de groupe unique.
+Cela garantit que chaque onglet reçoit la totalité des événements
+sans que Kafka les répartisse entre les connexions.
+
+On voit défiler les événements avec leur horodatage précis, leur type d'opération,
+la table source et le payload de la ligne modifiée.
+
+On peut filtrer par topic Kafka pour ne voir que les événements d'une table spécifique,
+ou utiliser la barre de recherche pour filtrer par nom de table.
+
+Un heartbeat keep-alive est envoyé toutes les 15 secondes
+pour maintenir la connexion ouverte même en l'absence d'événements.
+
+---
+
+## Requêtes SQL à coller dans la console
 
 ```sql
-SELECT
-  channel,
-  COUNT(*) AS nb_commandes,
-  ROUND(SUM(gross_revenue), 2) AS revenu_brut
-FROM iceberg.analytics.gold_sales_facts
-GROUP BY channel
-ORDER BY revenu_brut DESC
-```
-
-3. **Requête 2 — Top 10 clients** :
-
-```sql
-SELECT
-  name,
-  segment,
-  total_orders,
-  ROUND(total_spent, 2) AS total_spent
-FROM iceberg.analytics.gold_customers
-WHERE total_spent > 0
-ORDER BY total_spent DESC
-LIMIT 10
-```
-
-4. **Requête 3 — Latence CDC end-to-end** :
-
-```sql
-SELECT
-  source_table,
-  COUNT(*) AS nb_events,
-  ROUND(AVG(
-    (to_unixtime(ingestion_timestamp) * 1000 - source_ts_ms) / 1000.0
-  ), 2) AS latence_moy_sec
-FROM iceberg.analytics.bronze_orders_cdc
-GROUP BY source_table
-```
-
-5. Cliquer **Export CSV** pour montrer le téléchargement
-
-**Ce qu'on dit :**
-> "L'éditeur Monaco tourne directement sur Trino.
-> Seuls les SELECT sont autorisés — tout DDL/DML est bloqué côté API avec une réponse 400.
-> Les résultats sont streamés en NDJSON ligne par ligne."
-
----
-
-## ÉTAPE 7 — Event Stream (4:30 – 5:10)
-
-**URL :** http://84.8.218.197:3000/stream
-
-**Ce qu'on fait :**
-
-1. Montrer le flux SSE en temps réel — événements CDC Kafka live
-2. **Filtrer par topic** : sélectionner `cdc.public.orders`
-3. **Rechercher** : taper `payment` dans la barre de recherche
-4. Pointer les badges INSERT / UPDATE / DELETE avec timestamps précis
-
-**Ce qu'on dit :**
-> "Connexion Server-Sent Events vers `/api/events/stream`.
-> Un consommateur Kafka est ouvert par connexion navigateur avec un group_id unique —
-> chaque onglet reçoit 100 % des événements sans partage de charge Kafka."
-
----
-
-## RÉSUMÉ
-
-| Étape | Page              | Durée | Point clé montré                        |
-|-------|-------------------|-------|-----------------------------------------|
-| 1     | Login             | 0:30  | JWT auth                                |
-| 2     | Dashboard         | 1:00  | KPIs + health + events feed             |
-| 3     | Bronze            | 0:45  | Données brutes append-only              |
-| 4     | Silver            | 0:35  | Dédup + typage fort + soft-delete       |
-| 5     | Gold              | 0:30  | Agrégats métier 5 tables                |
-| 6     | Query Console     | 1:10  | SQL live Trino + export CSV             |
-| 7     | Event Stream      | 0:40  | SSE Kafka temps réel                    |
-| **Total** |               | **~5:10** |                                     |
-
----
-
-## Toutes les requêtes SQL prêtes à coller
-
-```sql
--- 1. Revenus par canal
-SELECT channel, COUNT(*) AS commandes,
+-- Revenus par canal de vente
+SELECT channel,
+       COUNT(*) AS nb_commandes,
        ROUND(SUM(gross_revenue), 2) AS revenu_brut
 FROM iceberg.analytics.gold_sales_facts
-GROUP BY channel ORDER BY revenu_brut DESC;
+GROUP BY channel
+ORDER BY revenu_brut DESC;
+```
 
--- 2. Top 10 clients
+```sql
+-- Top 10 clients par dépense totale
 SELECT name, segment, total_orders,
        ROUND(total_spent, 2) AS total_spent
 FROM iceberg.analytics.gold_customers
 WHERE total_spent > 0
-ORDER BY total_spent DESC LIMIT 10;
+ORDER BY total_spent DESC
+LIMIT 10;
+```
 
--- 3. Paiements ce mois
-SELECT method, SUM(transaction_count) AS nb,
-       ROUND(SUM(total_amount), 2) AS montant
-FROM iceberg.analytics.gold_payments_summary
-WHERE payment_month = FORMAT_DATETIME(NOW(), 'yyyy-MM')
-GROUP BY method ORDER BY montant DESC;
-
--- 4. Taux de retour par raison
-SELECT reason, SUM(return_count) AS nb_retours,
-       ROUND(AVG(return_rate_pct), 2) AS taux_pct
-FROM iceberg.analytics.gold_returns_summary
-GROUP BY reason ORDER BY nb_retours DESC;
-
--- 5. Latence CDC end-to-end
-SELECT source_table, COUNT(*) AS events,
-       ROUND(AVG((to_unixtime(ingestion_timestamp)*1000
-                  - source_ts_ms) / 1000.0), 2) AS latence_moy_s
+```sql
+-- Latence CDC end-to-end (Bronze)
+SELECT source_table,
+       COUNT(*) AS nb_events,
+       ROUND(AVG(
+         (to_unixtime(ingestion_timestamp) * 1000 - source_ts_ms) / 1000.0
+       ), 2) AS latence_moy_sec
 FROM iceberg.analytics.bronze_orders_cdc
 GROUP BY source_table;
+```
 
--- 6. Lignes par couche Medallion
+```sql
+-- Méthodes de paiement ce mois
+SELECT method,
+       SUM(transaction_count) AS nb_transactions,
+       ROUND(SUM(total_amount), 2) AS montant_total
+FROM iceberg.analytics.gold_payments_summary
+WHERE payment_month = FORMAT_DATETIME(NOW(), 'yyyy-MM')
+GROUP BY method
+ORDER BY montant_total DESC;
+```
+
+```sql
+-- Nombre de lignes par couche Medallion
 SELECT 'bronze' AS layer, COUNT(*) AS rows
 FROM iceberg.analytics.bronze_orders_cdc
 UNION ALL

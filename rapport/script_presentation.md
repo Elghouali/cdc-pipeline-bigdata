@@ -1,9 +1,9 @@
 # Script de Présentation — CDC Pipeline
-## Un présentateur par bloc · ~10 minutes · ENSET Mohammedia
+## Un présentateur par bloc · ~11 minutes · ENSET Mohammedia
 
-**P1 = Zakaria Elghouali → Slides 1 à 5** (contexte, architecture, pipeline de données)
-**P2 = [Prénom Binôme] → Slides 6 à 10** (traitements Silver/Gold, API, déploiement, résultats)
-**Slide 11 → P1 + P2** (conclusion partagée)
+**P1 = Zakaria Elghouali → Slides 1 à 6** (contexte, architecture globale, vue détaillée, Bronze)
+**P2 = [Prénom Binôme] → Slides 7 à 11** (Silver/Gold, API, déploiement, résultats)
+**Slide 12 → P1 + P2** (conclusion partagée)
 
 ---
 
@@ -80,7 +80,37 @@ C'est le point d'accès unique pour l'API et la console web.
 
 ---
 
-## SLIDE 5 — Couche Bronze (3:30 – 4:30) · P1
+## SLIDE 5 — Vue Architecture Détaillée (3:30 – 4:15) · P1
+
+**P1 :**
+Voici maintenant une vue plus détaillée de la topologie complète — tous les 21 services,
+regroupés en cinq couches fonctionnelles.
+
+À gauche, la couche **Source** : PostgreSQL avec `wal_level=logical` activé via les arguments
+de démarrage Docker, et une publication logique limitée aux six tables surveillées.
+
+La couche **Ingestion** : Debezium lit le WAL et publie un événement JSON structuré
+sur chaque topic Kafka — un topic par table, nommé `cdc.public.{table}`.
+Les schémas JSON sont désactivés : le message est directement le payload.
+
+Au centre, la couche **Traitement** : un Spark Master et un Worker orchestrent trois jobs
+de streaming indépendants — Bronze avec un trigger de 30 secondes, Silver à 60 secondes
+pour le `MERGE INTO`, et Gold à 5 minutes pour la réécriture des agrégats.
+
+La couche **Stockage Medallion** : les fichiers Parquet sont persistés sur MinIO,
+catalogués par le Hive Metastore, et structurés en 17 tables Iceberg réparties
+sur les trois couches — Bronze, Silver, Gold — chacune avec sa propre colonne de partition.
+
+Enfin, la couche **Exposition** : Trino exécute le SQL distribué sur MinIO,
+FastAPI expose les 13 endpoints REST avec authentification JWT,
+et la console React fournit l'interface opérationnelle en temps réel.
+
+En bas, la stack de monitoring est transversale à toutes les couches :
+Prometheus, Grafana, Loki, Alertmanager, Kafka Exporter et Postgres Exporter.
+
+---
+
+## SLIDE 6 — Couche Bronze (4:15 – 5:15) · P1
 
 **P1 :**
 La couche Bronze, c'est l'ingestion brute. Principe fondamental : zéro transformation.
@@ -102,7 +132,7 @@ Je passe maintenant la parole à mon binôme pour la couche Silver.
 
 ---
 
-## SLIDE 6 — Couche Silver (4:30 – 5:30) · P2
+## SLIDE 7 — Couche Silver (5:15 – 6:15) · P2
 
 **P2 :**
 Merci. La couche Silver, c'est là où on structure et nettoie la donnée.
@@ -129,7 +159,7 @@ Les tables Silver sont partitionnées par `updated_date`.
 
 ---
 
-## SLIDE 7 — Couche Gold (5:30 – 6:30) · P2
+## SLIDE 8 — Couche Gold (6:15 – 7:15) · P2
 
 **P2 :**
 La couche Gold, c'est la couche analytique finale — directement consommable par des outils BI.
@@ -153,7 +183,7 @@ ce qui rend l'opération idempotente.
 
 ---
 
-## SLIDE 8 — API FastAPI & Console React (6:30 – 7:30) · P2
+## SLIDE 9 — API FastAPI & Console React (7:15 – 8:15) · P2
 
 **P2 :**
 Pour exposer ce pipeline, nous avons développé une API REST avec FastAPI en Python 3.11.
@@ -176,7 +206,7 @@ L'API est testée par une suite de 56 tests pytest couvrant les 7 routeurs.
 
 ---
 
-## SLIDE 9 — Déploiement (7:30 – 8:15) · P2
+## SLIDE 10 — Déploiement (8:15 – 9:00) · P2
 
 **P2 :**
 Le déploiement est entièrement conteneurisé avec Docker Compose.
@@ -196,7 +226,7 @@ La console est accessible en direct sur notre VM Oracle Cloud.
 
 ---
 
-## SLIDE 10 — Résultats (8:15 – 9:00) · P2
+## SLIDE 11 — Résultats (9:00 – 9:45) · P2
 
 **P2 :**
 Les résultats obtenus valident tous nos objectifs initiaux.
@@ -219,7 +249,7 @@ Je repasse la parole à Zakaria pour la conclusion.
 
 ---
 
-## SLIDE 11 — Conclusion (9:00 – 10:00) · P1 + P2
+## SLIDE 12 — Conclusion (9:45 – 10:45) · P1 + P2
 
 **P1 :**
 Pour conclure, ce projet nous a permis de construire un pipeline data complet,
@@ -245,22 +275,23 @@ Nous sommes disponibles pour répondre à vos questions.
 
 ## Timing résumé
 
-| Slide | Contenu          | Durée  | Présentateur |
-|-------|------------------|--------|--------------|
-| 1     | Titre            | 0:40   | **P1**       |
-| 2     | Sommaire         | 0:15   | **P1**       |
-| 3     | Contexte         | 1:05   | **P1**       |
-| 4     | Architecture     | 1:30   | **P1**       |
-| 5     | Bronze           | 1:00   | **P1**       |
-| 6     | Silver           | 1:00   | **P2**       |
-| 7     | Gold             | 1:00   | **P2**       |
-| 8     | API & Frontend   | 1:00   | **P2**       |
-| 9     | Déploiement      | 0:45   | **P2**       |
-| 10    | Résultats        | 0:45   | **P2**       |
-| 11    | Conclusion       | 1:00   | P1 + P2      |
-| **Total** |              | **~10:00** |          |
+| Slide | Contenu                   | Durée  | Présentateur |
+|-------|---------------------------|--------|--------------|
+| 1     | Titre                     | 0:40   | **P1**       |
+| 2     | Sommaire                  | 0:15   | **P1**       |
+| 3     | Contexte                  | 1:05   | **P1**       |
+| 4     | Architecture Globale      | 1:30   | **P1**       |
+| 5     | Vue Architecture Détaillée| 0:45   | **P1**       |
+| 6     | Bronze                    | 1:00   | **P1**       |
+| 7     | Silver                    | 1:00   | **P2**       |
+| 8     | Gold                      | 1:00   | **P2**       |
+| 9     | API & Frontend            | 1:00   | **P2**       |
+| 10    | Déploiement               | 0:45   | **P2**       |
+| 11    | Résultats                 | 0:45   | **P2**       |
+| 12    | Conclusion                | 1:00   | P1 + P2      |
+| **Total** |                       | **~11:00** |          |
 
-**Répartition :** P1 = slides 1–5 (~4:30) · P2 = slides 6–10 (~4:30) · Conclusion partagée (~1:00)
+**Répartition :** P1 = slides 1–6 (~5:15) · P2 = slides 7–11 (~4:30) · Conclusion partagée (~1:00)
 
 ---
 
@@ -268,6 +299,6 @@ Nous sommes disponibles pour répondre à vos questions.
 > - Ne pas lire le script mot pour mot — s'en servir comme aide-mémoire.
 > - Pointer les éléments sur le slide au moment où on les cite.
 > - Parler lentement pour les termes techniques : Debezium, Iceberg, WAL, Structured Streaming.
-> - La transition slide 5→6 doit être fluide : P1 dit "je passe la parole", P2 enchaîne directement.
+> - La transition slide 6→7 doit être fluide : P1 dit "je passe la parole", P2 enchaîne directement.
 > - Prévoir 2–3 minutes supplémentaires pour les questions.
-> - Slide 10 : P2 dit "je repasse la parole à Zakaria" avant slide 11.
+> - Slide 11 : P2 dit "je repasse la parole à Zakaria" avant slide 12.

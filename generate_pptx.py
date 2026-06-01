@@ -159,30 +159,32 @@ def slide_plan(prs):
     section_header(slide, "PLAN DE LA PRÉSENTATION", "Sommaire",
                    top_color=ACCENT, speaker_label="P1 — Zakaria", speaker_color=P1_COLOR)
 
+    # 9 items in a 3-column × 3-row grid
     items = [
         ("01", "Contexte & Problématique",       ACCENT,     "P1"),
         ("02", "Architecture Globale",            PURPLE,     "P1"),
-        ("03", "Couche Bronze — Ingestion CDC",   BRONZE_CLR, "P1"),
-        ("04", "Couche Silver — Transformation",  SILVER_CLR, "P2"),
-        ("05", "Couche Gold — Agrégation",        GOLD_CLR,   "P2"),
-        ("06", "API FastAPI & Console React",     PURPLE,     "P2"),
-        ("07", "Déploiement Oracle Cloud",        EMERALD,    "P2"),
-        ("08", "Résultats & Validation",          ACCENT,     "P2"),
+        ("03", "Vue Architecture Détaillée",      BLUE,       "P1"),
+        ("04", "Couche Bronze — Ingestion CDC",   BRONZE_CLR, "P1"),
+        ("05", "Couche Silver — Transformation",  SILVER_CLR, "P2"),
+        ("06", "Couche Gold — Agrégation",        GOLD_CLR,   "P2"),
+        ("07", "API FastAPI & Console React",     PURPLE,     "P2"),
+        ("08", "Déploiement Oracle Cloud",        EMERALD,    "P2"),
+        ("09", "Résultats & Validation",          ACCENT,     "P2"),
     ]
-    col_w = Inches(5.8)
+    col_w = Inches(3.9)
     for i, (num, title, color, spk) in enumerate(items):
-        col, row = i % 2, i // 2
-        x = Inches(0.6) + col * col_w
-        y = Inches(1.58) + row * Inches(1.2)
-        add_rect(slide, x, y, Inches(5.5), Inches(1.02),
+        col, row = i % 3, i // 3
+        x = Inches(0.5) + col * Inches(4.15)
+        y = Inches(1.56) + row * Inches(1.78)
+        add_rect(slide, x, y, col_w, Inches(1.62),
                  fill_color=BG_CARD, line_color=color, line_width=Pt(0.75))
         add_label(slide, num, x + Inches(0.18), y + Inches(0.1),
-                  Inches(0.7), Inches(0.55), font_size=Pt(26), bold=True, color=color)
-        add_label(slide, title, x + Inches(0.95), y + Inches(0.28),
-                  Inches(4.2), Inches(0.42), font_size=Pt(13), bold=True, color=WHITE)
+                  Inches(0.7), Inches(0.55), font_size=Pt(24), bold=True, color=color)
+        add_label(slide, title, x + Inches(0.18), y + Inches(0.72),
+                  Inches(3.55), Inches(0.55), font_size=Pt(12), bold=True, color=WHITE)
         sp_color = P1_COLOR if spk == "P1" else P2_COLOR
-        add_label(slide, spk, x + Inches(4.55), y + Inches(0.68),
-                  Inches(0.8), Inches(0.26), font_size=Pt(8), bold=True, color=sp_color)
+        add_label(slide, spk, x + Inches(3.1), y + Inches(0.1),
+                  Inches(0.65), Inches(0.26), font_size=Pt(8), bold=True, color=sp_color)
 
 
 def slide_context(prs):
@@ -274,11 +276,133 @@ def slide_architecture(prs):
               font_size=Pt(10), color=WHITE_DIM, italic=True, align=PP_ALIGN.CENTER)
 
 
-def slide_bronze(prs):
-    """Slide 5 · P1"""
+def slide_vue_architecture(prs):
+    """Slide 5 — Vue Architecture Détaillée · P1"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "03 — COUCHE BRONZE", "Ingestion CDC — Données Brutes",
+    section_header(slide, "03 — VUE ARCHITECTURE",
+                   "Topologie Complète — 21 Services · 5 Couches Fonctionnelles",
+                   top_color=BLUE, speaker_label="P1 — Zakaria", speaker_color=P1_COLOR)
+
+    y0  = Inches(1.48)
+    cH  = Inches(4.72)   # total column height (header + items)
+
+    # ── 5 columns ────────────────────────────────────────────────────────────
+    COLS = [
+        {
+            "x": Inches(0.28), "w": Inches(2.28),
+            "label": "SOURCE", "color": BLUE,
+            "items": [
+                ("PostgreSQL 15", ":5432  ·  WAL logique\nwal_level = logical"),
+                ("Publication\ndebezium_pub", "6 tables surveillées\nPlugin pgoutput"),
+            ],
+        },
+        {
+            "x": Inches(2.76), "w": Inches(2.28),
+            "label": "INGESTION", "color": AMBER,
+            "items": [
+                ("Debezium 2.5\nKafka Connect", ":8083  ·  CDC connector\nJSON schemas OFF"),
+                ("Apache Kafka", ":9092  ·  6 topics\ncdc.public.*"),
+            ],
+        },
+        {
+            "x": Inches(5.24), "w": Inches(2.55),
+            "label": "TRAITEMENT", "color": PURPLE,
+            "items": [
+                ("Spark Master", ":7077  ·  + 1 Worker\n1 Go RAM exécuteur"),
+                ("bronze_job.py", "Trigger 30 s\n6 streams indép."),
+                ("silver_job.py", "Trigger 60 s\nMERGE INTO"),
+                ("gold_job.py", "Trigger 5 min\noverwritePartitions"),
+            ],
+        },
+        {
+            "x": Inches(8.0), "w": Inches(2.72),
+            "label": "STOCKAGE MEDALLION", "color": EMERALD,
+            "items": [
+                ("MinIO + Hive", ":9000 / :9083\nParquet · Snappy"),
+                ("BRONZE", "6 tables\npartition: ingestion_date"),
+                ("SILVER", "6 tables\npartition: updated_date"),
+                ("GOLD", "5 tables\npartition: snapshot_date"),
+            ],
+        },
+        {
+            "x": Inches(10.96), "w": Inches(2.1),
+            "label": "EXPOSITION", "color": ACCENT,
+            "items": [
+                ("Trino 435", ":8080\nSQL distribué"),
+                ("FastAPI", ":8000  ·  JWT\n13 endpoints"),
+                ("React (Vite)", ":3000\n6 routes · dark"),
+            ],
+        },
+    ]
+
+    for col in COLS:
+        x, w   = col["x"], col["w"]
+        color  = col["color"]
+        n      = len(col["items"])
+        item_h = (cH - Inches(0.52)) / n
+
+        # Column header bar
+        bg = RGBColor(color[0] // 5, color[1] // 5, color[2] // 5)
+        add_rect(slide, x, y0, w, Inches(0.44),
+                 fill_color=bg, line_color=color, line_width=Pt(0.75))
+        add_label(slide, col["label"], x, y0, w, Inches(0.44),
+                  font_size=Pt(8.5), bold=True, color=color, align=PP_ALIGN.CENTER)
+
+        # Component boxes
+        for j, (name, desc) in enumerate(col["items"]):
+            iy = y0 + Inches(0.50) + j * item_h
+            bh = item_h - Inches(0.06)
+            add_rect(slide, x + Inches(0.05), iy,
+                     w - Inches(0.10), bh,
+                     fill_color=BG_CARD, line_color=color, line_width=Pt(0.6))
+            # name
+            add_label(slide, name,
+                      x + Inches(0.12), iy + Inches(0.06),
+                      w - Inches(0.22), Inches(0.42),
+                      font_size=Pt(9.5), bold=True, color=color)
+            # desc
+            add_label(slide, desc,
+                      x + Inches(0.12), iy + Inches(0.5),
+                      w - Inches(0.22), bh - Inches(0.54),
+                      font_size=Pt(8), color=WHITE_DIM)
+
+    # ── Arrows between columns ────────────────────────────────────────────────
+    arrow_y = y0 + Inches(1.35)
+    for ax in [Inches(2.54), Inches(5.02), Inches(7.75), Inches(10.72)]:
+        add_label(slide, "→", ax, arrow_y, Inches(0.38), Inches(0.38),
+                  font_size=Pt(16), bold=True, color=ACCENT, align=PP_ALIGN.CENTER)
+
+    # ── Monitoring transverse bar ─────────────────────────────────────────────
+    mon_y = y0 + cH + Inches(0.05)
+    add_rect(slide, Inches(0.28), mon_y, Inches(12.78), Inches(0.68),
+             fill_color=BG_CARD, line_color=WHITE_DIM, line_width=Pt(0.5))
+    add_label(slide, "MONITORING", Inches(0.38), mon_y + Inches(0.04),
+              Inches(1.2), Inches(0.58),
+              font_size=Pt(7.5), bold=True, color=WHITE_DIM)
+
+    mon_items = [
+        ("Prometheus :9090", RED),
+        ("Grafana :3001",    AMBER),
+        ("Loki + Promtail",  BLUE),
+        ("Alertmanager",     PURPLE),
+        ("Kafka Exporter",   AMBER),
+        ("PG Exporter",      BLUE),
+    ]
+    for i, (label, color) in enumerate(mon_items):
+        mx = Inches(1.65) + i * Inches(1.88)
+        add_rect(slide, mx, mon_y + Inches(0.09), Inches(1.73), Inches(0.48),
+                 fill_color=BG_DEEP, line_color=color, line_width=Pt(0.5))
+        add_label(slide, label, mx + Inches(0.05), mon_y + Inches(0.11),
+                  Inches(1.63), Inches(0.42),
+                  font_size=Pt(8.5), color=color, align=PP_ALIGN.CENTER)
+
+
+def slide_bronze(prs):
+    """Slide 6 · P1"""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(slide)
+    section_header(slide, "04 — COUCHE BRONZE", "Ingestion CDC — Données Brutes",
                    top_color=BRONZE_CLR, speaker_label="P1 — Zakaria", speaker_color=P1_COLOR)
 
     flow = [
@@ -343,7 +467,7 @@ def slide_silver(prs):
     """Slide 6 · P2"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "04 — COUCHE SILVER", "Transformation & Qualité des Données",
+    section_header(slide, "05 — COUCHE SILVER", "Transformation & Qualité des Données",
                    top_color=SILVER_CLR, speaker_label="P2", speaker_color=P2_COLOR)
 
     ops = [
@@ -393,7 +517,7 @@ def slide_gold(prs):
     """Slide 7 · P2"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "05 — COUCHE GOLD", "Agrégats Métier — Couche Analytique",
+    section_header(slide, "06 — COUCHE GOLD", "Agrégats Métier — Couche Analytique",
                    top_color=GOLD_CLR, speaker_label="P2", speaker_color=P2_COLOR)
 
     rows = [
@@ -434,7 +558,7 @@ def slide_api_frontend(prs):
     """Slide 8 · P2"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "06 — API & FRONTEND", "FastAPI Backend  +  React Console",
+    section_header(slide, "07 — API & FRONTEND", "FastAPI Backend  +  React Console",
                    top_color=PURPLE, speaker_label="P2", speaker_color=P2_COLOR)
 
     add_rect(slide, Inches(0.5), Inches(1.55), Inches(5.95), Inches(5.6),
@@ -492,7 +616,7 @@ def slide_deploy(prs):
     """Slide 9 · P2"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "07 — DÉPLOIEMENT", "Oracle Cloud Infrastructure — Ubuntu 22.04",
+    section_header(slide, "08 — DÉPLOIEMENT", "Oracle Cloud Infrastructure — Ubuntu 22.04",
                    top_color=EMERALD, speaker_label="P2", speaker_color=P2_COLOR)
 
     infra = [
@@ -546,7 +670,7 @@ def slide_results(prs):
     """Slide 10 · P2"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
-    section_header(slide, "08 — RÉSULTATS", "Métriques & Performances",
+    section_header(slide, "09 — RÉSULTATS", "Métriques & Performances",
                    top_color=ACCENT, speaker_label="P2", speaker_color=P2_COLOR)
 
     # Latency breakdown panel
@@ -674,6 +798,7 @@ def main():
     slide_plan(prs)
     slide_context(prs)
     slide_architecture(prs)
+    slide_vue_architecture(prs)
     slide_bronze(prs)
     slide_silver(prs)
     slide_gold(prs)

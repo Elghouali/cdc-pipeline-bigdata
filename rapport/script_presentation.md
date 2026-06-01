@@ -1,258 +1,266 @@
 # Script de Présentation — CDC Pipeline
-## Deux présentateurs · ~10 minutes · ENSET Mohammedia
+## Un présentateur par bloc · ~10 minutes · ENSET Mohammedia
 
-**P1 = Zakaria Elghouali**
-**P2 = [Prénom Binôme]**
+**P1 = Zakaria Elghouali → Slides 1 à 5** (contexte, architecture, pipeline de données)
+**P2 = [Prénom Binôme] → Slides 6 à 10** (traitements Silver/Gold, API, déploiement, résultats)
+**Slide 11 → P1 + P2** (conclusion partagée)
 
 ---
 
-## SLIDE 1 — Titre (0:00 – 0:45)
+## SLIDE 1 — Titre (0:00 – 0:40) · P1
 
 **P1 :**
-Bonjour à tous. Nous allons vous présenter aujourd'hui notre projet de module Big Data :
-un pipeline de traitement de données en temps réel, basé sur l'Architecture Medallion
-et le principe de Change Data Capture.
+Bonjour à tous. Je suis Zakaria Elghouali, et avec mon binôme nous allons vous présenter
+notre projet de module Big Data : un pipeline de traitement de données en temps réel,
+basé sur l'Architecture Medallion et le principe de Change Data Capture.
 
-**P2 :**
 Ce projet couvre toute la chaîne — de la capture des changements dans une base de données
-relationnelle jusqu'à une console web de monitoring en temps réel.
-Nous allons vous expliquer les choix techniques, l'architecture, et les résultats obtenus.
+relationnelle jusqu'à une console web de monitoring en temps réel, avec une latence
+bout-en-bout de l'ordre de quelques minutes.
+
+Je présenterai la problématique, l'architecture globale et les trois couches du pipeline.
+Mon binôme prendra la parole à partir de la couche Silver pour vous présenter l'API,
+le déploiement et les résultats.
 
 ---
 
-## SLIDE 2 — Sommaire (0:45 – 1:00)
+## SLIDE 2 — Sommaire (0:40 – 0:55) · P1
 
 **P1 :**
-Voici le plan de notre présentation. Nous commencerons par la problématique,
-puis l'architecture globale. Ensuite, chaque couche Medallion, l'API, le déploiement,
-et enfin les résultats. Commençons.
+Voici le plan. Nous commencerons par la problématique,
+puis l'architecture globale. J'enchaînerai avec les couches Bronze et Silver.
+Mon binôme couvrira ensuite Gold, l'API, le déploiement et les résultats.
+Commençons sans attendre.
 
 ---
 
-## SLIDE 3 — Contexte & Problématique (1:00 – 2:00)
+## SLIDE 3 — Contexte & Problématique (0:55 – 2:00) · P1
 
-**P2 :**
+**P1 :**
 Le problème de départ est simple mais fréquent dans les systèmes data réels.
-Les pipelines ETL traditionnels fonctionnent en batch — toutes les heures, voire
-toutes les nuits. Résultat : les données analytiques sont toujours en retard sur la réalité.
+Les pipelines ETL traditionnels fonctionnent en batch — toutes les heures,
+voire toutes les nuits. Résultat : les données analytiques sont toujours en retard
+sur la réalité. Impossible de réagir à un pic de retours ou à une fraude en cours.
 
-**P1 :**
-Deuxième problème : les silos. Les bases opérationnelles — commandes, clients, paiements —
-sont isolées. Il n'existe pas de vue unifiée pour faire de l'analytique.
+Deuxième problème : les silos. Les bases opérationnelles — commandes, clients,
+paiements — sont isolées. Il n'existe pas de vue unifiée pour faire de l'analytique.
 
-**P2 :**
-Notre solution : le Change Data Capture.
+Notre réponse : le Change Data Capture.
 Au lieu de copier toute la base périodiquement, on capture chaque modification
 — chaque INSERT, UPDATE, DELETE — au moment où elle se produit,
-et on la propage en streaming vers une architecture en couches.
-L'objectif : une latence bout-en-bout inférieure à 10 minutes,
-avec un passage de PostgreSQL à Kafka en moins d'une seconde.
+et on la propage en streaming vers une architecture analytique en couches.
+L'objectif : un passage de PostgreSQL à Kafka en moins d'une seconde,
+et une latence bout-en-bout inférieure à 10 minutes.
 
 ---
 
-## SLIDE 4 — Architecture Globale (2:00 – 3:30)
+## SLIDE 4 — Architecture Globale (2:00 – 3:30) · P1
 
 **P1 :**
-Voici l'architecture complète. Laissez-moi vous présenter les composants dans l'ordre du flux.
+Voici l'architecture complète — 21 services Docker sur un réseau bridge unique.
+Laissez-moi vous présenter les composants dans l'ordre du flux de données.
 
 Tout commence avec PostgreSQL — notre base source, configurée en réplication logique.
-Le journal de transactions WAL est activé pour exposer chaque changement.
+Le paramètre `wal_level=logical` est injecté au démarrage du conteneur via des arguments
+de commande, ce qui expose chaque changement dans le Write-Ahead Log.
 
-**P2 :**
-Debezium, exécuté via Kafka Connect, lit ce journal et produit un événement JSON
+Debezium, exécuté via Kafka Connect, lit ce WAL et produit un événement JSON structuré
 pour chaque opération. Ces événements sont publiés dans Apache Kafka sur six topics,
-un par table source.
+un par table source : customers, products, orders, order\_items, payments, returns.
 
-**P1 :**
-Apache Spark consomme ces topics en mode Structured Streaming
-et écrit les données dans des tables Apache Iceberg, stockées sur MinIO — notre S3 local.
+Apache Spark consomme ces topics en mode Structured Streaming — six streams indépendants,
+un par table, chacun avec son propre répertoire de checkpoint sur MinIO.
+Les données sont écrites en format Apache Iceberg, un format de table ouvert
+qui garantit les transactions ACID, l'évolution de schéma et le time-travel.
+Le stockage physique est MinIO, notre S3 local.
 
-**P2 :**
-C'est là qu'intervient l'Architecture Medallion — trois couches successives :
-Bronze pour la donnée brute, Silver pour la donnée nettoyée,
-et Gold pour les agrégats métier.
-Chaque couche est une table Iceberg avec garanties ACID et support du time-travel.
-
----
-
-## SLIDE 5 — Couche Bronze (3:30 – 4:30)
-
-**P1 :**
-La couche Bronze, c'est l'ingestion brute. Aucune transformation — on préserve
-la donnée telle qu'elle sort de Debezium, avec tous les champs de métadonnée :
-l'opération, le timestamp source, l'offset Kafka.
-
-**P2 :**
-Le job Spark lit le topic Kafka, parse le JSON avec le schéma attendu,
-et écrit en mode append dans une table Iceberg.
-Le trigger est toutes les 30 secondes.
-
-Nous avons six tables Bronze : customers, orders, order_items, payments, products, returns.
-C'est le point d'entrée unique pour toute la donnée CDC.
+Enfin, Trino — le moteur SQL distribué — expose les trois couches Iceberg
+en SQL standard via le catalogue `iceberg`, schéma `analytics`.
+C'est le point d'accès unique pour l'API et la console web.
 
 ---
 
-## SLIDE 6 — Couche Silver (4:30 – 5:30)
-
-**P2 :**
-La couche Silver, c'est là où on nettoie et on structure la donnée.
-
-Premier traitement : la déduplication. Dans un micro-batch, plusieurs événements
-peuvent toucher la même clé primaire. On applique une fenêtre de partitionnement
-par clé primaire, triée par horodatage WAL décroissant (`_source_ts_ms`),
-et on ne conserve que la ligne `row_number = 1` — c'est-à-dire l'état le plus récent.
+## SLIDE 5 — Couche Bronze (3:30 – 4:30) · P1
 
 **P1 :**
-Ensuite, le typage fort : les dates Debezium sont encodées en entiers (jours depuis
-l'epoch Unix) — on les reconvertit en `DateType`. Les montants passent en `DoubleType`.
-On évite ainsi les erreurs silencieuses en aval.
+La couche Bronze, c'est l'ingestion brute. Principe fondamental : zéro transformation.
+On préserve la donnée telle qu'elle sort de Debezium — l'opération CDC, le payload
+JSON complet, le timestamp WAL source, l'offset Kafka, la date d'ingestion.
 
-La gestion des suppressions est faite via une colonne `_is_deleted` booléenne,
-déduite du champ `op` de Debezium — plutôt que de supprimer physiquement la ligne,
-ce qui préserve l'historique complet dans la couche Silver.
+Le job Spark lance six streams indépendants — un par table source.
+À chaque micro-batch de 30 secondes, il parse le payload Debezium,
+sépare les lignes valides des heartbeats — qui ont un champ `op` null —
+journalise les lignes écartées, et écrit les lignes valides en mode append
+dans une table Iceberg partitionnée par `ingestion_date`.
 
-**P2 :**
-Les tables Silver sont partitionnées par `updated_date` — la date du traitement Silver —
-ce qui permet à Trino d'élaguer les partitions anciennes lors des requêtes analytiques.
+Ce design append-only garantit l'auditabilité complète :
+on peut toujours remonter à l'état exact de la source à un instant donné.
+C'est aussi la base stable sur laquelle les couches suivantes peuvent rejouer
+leur traitement en cas d'incident.
+
+Je passe maintenant la parole à mon binôme pour la couche Silver.
 
 ---
 
-## SLIDE 7 — Couche Gold (5:30 – 6:30)
-
-**P1 :**
-La couche Gold, c'est la couche analytique finale.
-Elle contient cinq tables d'agrégats directement consommables par des outils BI.
-
-gold_customers : une vue 360 de chaque client — nombre de commandes,
-montant total dépensé, valeur moyenne, dates première et dernière commande.
+## SLIDE 6 — Couche Silver (4:30 – 5:30) · P2
 
 **P2 :**
-gold_orders : chaque commande enrichie avec les informations client,
-paiement, articles et retours associés.
+Merci. La couche Silver, c'est là où on structure et nettoie la donnée.
 
-gold_sales_facts : les KPIs journaliers, découpés par canal de vente,
-segment client et catégorie produit.
+Le job Spark lit les tables Bronze en streaming continu avec un trigger de 60 secondes.
+Dans chaque micro-batch, on applique d'abord la déduplication :
+une fenêtre Spark partitionne les événements par clé primaire, les trie par
+horodatage WAL décroissant — la colonne `_source_ts_ms` —
+et ne conserve que la version la plus récente de chaque enregistrement.
 
-Et deux tables de synthèse : gold_payments_summary pour les paiements
-et gold_returns_summary pour les retours.
+Ensuite, le typage fort : les dates sortent de Debezium encodées en entiers —
+jours depuis l'epoch Unix. On les reconvertit en `DateType` Spark.
+Les montants passent en `DoubleType`. Ce typage explicite évite les erreurs
+silencieuses dans la couche Gold.
 
-**P1 :**
-Ces tables sont rafraîchies toutes les 5 minutes par un heartbeat Spark
-déclenché à chaque nouveau micro-batch sur Silver.
+La gestion des suppressions est faite via une colonne `_is_deleted` booléenne
+déduite du champ `op` de Debezium — `d` pour delete.
+On ne supprime jamais physiquement la ligne : on la marque supprimée.
+Cela préserve l'historique complet et facilite le time-travel Iceberg.
+
+L'upsert dans la table Silver se fait via un `MERGE INTO` Iceberg atomique,
+qui gère en une seule instruction les insertions, mises à jour et suppressions logiques.
+Les tables Silver sont partitionnées par `updated_date`.
 
 ---
 
-## SLIDE 8 — API FastAPI & Console React (6:30 – 7:30)
+## SLIDE 7 — Couche Gold (5:30 – 6:30) · P2
 
 **P2 :**
-Pour exposer ce pipeline, nous avons développé une API REST avec FastAPI.
+La couche Gold, c'est la couche analytique finale — directement consommable par des outils BI.
 
-L'authentification est gérée par JWT — tokens signés HS256, expiration configurable.
-L'endpoint /api/health sonde les cinq services du pipeline en parallèle
-et retourne leur statut et latence en temps réel.
+Elle contient cinq tables d'agrégats. `gold_customers` est une vue 360 de chaque client :
+nombre de commandes, montant total dépensé, valeur moyenne par commande,
+dates de première et dernière commande. `gold_orders` enrichit chaque commande
+avec les informations client, paiement, articles et retours associés.
 
-**P1 :**
-/api/metrics/{layer} interroge Trino pour récupérer le nombre de lignes
-et la partition la plus récente de chaque table — avec un cache de 30 secondes.
+`gold_sales_facts` est la table de faits journaliers : revenus bruts et nets,
+volumes vendus, taux d'annulation et de retour — segmentés par canal de vente,
+segment client et catégorie produit. C'est la table centrale pour les KPIs.
+Enfin, deux tables de synthèse mensuelle : `gold_payments_summary` pour
+la répartition par méthode de paiement, et `gold_returns_summary` pour
+les taux de retour par raison.
 
-/api/events/stream est un flux Server-Sent Events qui ouvre un consommateur Kafka
-dédié par connexion et pousse les événements CDC vers le navigateur sans polling.
-
-**P2 :**
-La console frontend est développée avec React 18, TypeScript et Tailwind CSS —
-en thème sombre. Elle comporte six routes :
-le dashboard KPI, une page par couche Medallion (Bronze, Silver, Gold),
-une console SQL branchée sur Trino, et un flux d'événements CDC en temps réel via SSE.
+Ces cinq tables sont rafraîchies toutes les 5 minutes par un heartbeat Spark
+déclenché à chaque nouveau micro-batch sur `silver_orders`.
+Chaque rafraîchissement réécrit la partition du jour en mode `overwritePartitions`,
+ce qui rend l'opération idempotente.
 
 ---
 
-## SLIDE 9 — Déploiement (7:30 – 8:15)
+## SLIDE 8 — API FastAPI & Console React (6:30 – 7:30) · P2
 
-**P1 :**
+**P2 :**
+Pour exposer ce pipeline, nous avons développé une API REST avec FastAPI en Python 3.11.
+
+L'authentification est gérée par JWT — tokens signés HS256, 60 minutes de validité,
+implémentés avec la librairie PyJWT. L'API compte 13 endpoints répartis en 7 routeurs.
+`/api/health` sonde les cinq services clés en parallèle et retourne leur statut et latence.
+`/api/metrics/{layer}` interroge Trino via son API HTTP et met le résultat en cache
+30 secondes avec un mécanisme de coalescing pour éviter les requêtes dupliquées.
+`/api/events/stream` ouvre un consommateur Kafka dédié par connexion
+et pousse les événements CDC vers le navigateur en Server-Sent Events, sans polling.
+
+La console frontend est développée avec React 18, TypeScript et Tailwind CSS en thème sombre.
+Elle comporte six routes : le dashboard KPI avec métriques animées,
+une page dédiée par couche Medallion — Bronze, Silver, Gold —,
+une console SQL branchée directement sur Trino avec éditeur Monaco,
+et le flux d'événements CDC en temps réel.
+
+L'API est testée par une suite de 56 tests pytest couvrant les 7 routeurs.
+
+---
+
+## SLIDE 9 — Déploiement (7:30 – 8:15) · P2
+
+**P2 :**
 Le déploiement est entièrement conteneurisé avec Docker Compose.
-La machine hôte est une VM Oracle Cloud — 4 vCPU, 11,7 Go de RAM, Ubuntu 22.04.
+La machine hôte est une VM Oracle Cloud Infrastructure — 4 vCPU,
+11,7 Go de RAM, 50 Go SSD, Ubuntu 22.04.
 
-Nous avons 21 services orchestrés sur un réseau bridge Docker :
-PostgreSQL, Zookeeper, Kafka, Kafka Connect, un Spark Master, un Spark Worker,
-MinIO avec son conteneur d'initialisation, le Hive Metastore sur MariaDB,
-Trino, Apache Superset, la stack de monitoring complète — Prometheus, Grafana,
-Loki, Alertmanager — l'API FastAPI et le frontend React.
+Nous orchestrons 21 services sur un réseau bridge Docker unique `cdc-net`.
+Les données persistantes sont réparties sur 9 volumes nommés.
+La mémoire des JVM lourds a été soigneusement calibrée pour coexister
+sur 11,7 Go : Trino à 2 Go de heap, Spark Worker à 1,5 Go,
+Kafka à 768 Mo, Hive Metastore à 700 Mo.
 
-**P2 :**
-Le workflow de déploiement est simple :
-on pousse sur GitHub, on fait un git pull sur la VM,
-et un docker compose up lance ou met à jour les services modifiés.
-
+Le workflow de déploiement est simple : on pousse sur GitHub,
+on fait un `git pull` sur la VM, et un `docker compose up -d`
+lance ou met à jour uniquement les services modifiés.
 La console est accessible en direct sur notre VM Oracle Cloud.
 
 ---
 
-## SLIDE 10 — Résultats (8:15 – 9:00)
-
-**P1 :**
-Les résultats obtenus valident nos objectifs initiaux.
-
-Les latences mesurées par étape : PostgreSQL vers Kafka en moins d'une seconde,
-Bronze en 15 à 30 secondes, Silver entre 30 et 60 secondes,
-et la couche Gold en 3 à 5 minutes.
-La latence bout-en-bout totale est de 4 à 7 minutes — bien en dessous de
-notre objectif de 10 minutes.
+## SLIDE 10 — Résultats (8:15 – 9:00) · P2
 
 **P2 :**
-Nous avons six topics Kafka actifs, dix-sept tables Iceberg réparties
-sur les trois couches — 6 Bronze, 6 Silver, 5 Gold —
-et la couche Gold se rafraîchit toutes les 5 minutes.
+Les résultats obtenus valident tous nos objectifs initiaux.
 
-Les validations clés : Debezium capture fidèlement tous les types d'opérations,
-Spark ne perd aucun message, Iceberg garantit les propriétés ACID,
-et Trino interroge directement MinIO sans déplacement de données.
+Sur les latences mesurées : PostgreSQL vers Kafka en moins d'une seconde,
+Bronze en 15 à 30 secondes, Silver entre 30 et 60 secondes,
+Gold en 3 à 5 minutes. Latence bout-en-bout totale : 4 à 7 minutes —
+bien en dessous de notre objectif de 10 minutes.
+
+Le pipeline tourne sur six topics Kafka actifs, dix-sept tables Iceberg
+réparties sur les trois couches — 6 Bronze, 6 Silver, 5 Gold.
+
+Les validations clés : Debezium capture fidèlement les quatre types d'opérations CDC,
+Spark ne perd aucun message grâce aux checkpoints Iceberg sur MinIO,
+Iceberg garantit les transactions ACID sur chaque MERGE INTO,
+et Trino interroge directement les fichiers Parquet dans MinIO
+sans déplacement de données.
+
+Je repasse la parole à Zakaria pour la conclusion.
 
 ---
 
-## SLIDE 11 — Conclusion (9:00 – 10:00)
+## SLIDE 11 — Conclusion (9:00 – 10:00) · P1 + P2
 
 **P1 :**
 Pour conclure, ce projet nous a permis de construire un pipeline data complet,
 de bout en bout, en appliquant des technologies utilisées en production
-dans les grandes architectures data : CDC, Lakehouse, streaming.
+dans les grandes architectures data : CDC par lecture de WAL, Lakehouse Iceberg,
+Spark Structured Streaming, Trino, et une stack d'observabilité complète
+Prometheus, Grafana, Loki et Alertmanager — déjà opérationnelle.
 
 **P2 :**
-Les perspectives d'évolution sont nombreuses.
-L'observabilité est déjà en place — Prometheus, Grafana, Loki et Alertmanager
-tournent dans le stack. La prochaine étape naturelle est le déploiement sur
-Kubernetes pour l'auto-scaling des workers Spark selon la charge.
-
-**P1 :**
-Nous envisageons également un Schema Registry Confluent pour formaliser
-les contrats d'interface entre producteurs et consommateurs Kafka,
-l'ajout d'une Dead Letter Queue pour tracer les événements malformés,
-et l'intégration de modèles de machine learning sur la couche Gold
+Les perspectives naturelles sont le déploiement sur Kubernetes pour l'auto-scaling
+des workers Spark, l'ajout d'un Schema Registry Confluent pour formaliser
+les contrats d'interface Kafka, une Dead Letter Queue pour tracer les événements
+malformés, et l'intégration de modèles de machine learning sur la couche Gold
 pour de la prédiction de churn ou de la détection de fraude.
 
-**P2 :**
+**P1 :**
 Nous vous remercions pour votre attention.
 
-**P1 :**
+**P2 :**
 Nous sommes disponibles pour répondre à vos questions.
 
 ---
 
 ## Timing résumé
 
-| Slide | Contenu            | Durée  | Qui parle             |
-|-------|--------------------|--------|-----------------------|
-| 1     | Titre              | 0:45   | P1 puis P2            |
-| 2     | Sommaire           | 0:15   | P1                    |
-| 3     | Contexte           | 1:00   | P2 · P1 · P2          |
-| 4     | Architecture       | 1:30   | P1 · P2 · P1 · P2     |
-| 5     | Bronze             | 1:00   | P1 puis P2            |
-| 6     | Silver             | 1:00   | P2 · P1 · P2          |
-| 7     | Gold               | 1:00   | P1 · P2 · P1          |
-| 8     | API & Frontend     | 1:00   | P2 · P1 · P2          |
-| 9     | Déploiement        | 0:45   | P1 puis P2            |
-| 10    | Résultats          | 0:45   | P1 puis P2            |
-| 11    | Conclusion         | 1:00   | P1 · P2 · P1 · P2     |
-| **Total** |                | **~10:00** |                   |
+| Slide | Contenu          | Durée  | Présentateur |
+|-------|------------------|--------|--------------|
+| 1     | Titre            | 0:40   | **P1**       |
+| 2     | Sommaire         | 0:15   | **P1**       |
+| 3     | Contexte         | 1:05   | **P1**       |
+| 4     | Architecture     | 1:30   | **P1**       |
+| 5     | Bronze           | 1:00   | **P1**       |
+| 6     | Silver           | 1:00   | **P2**       |
+| 7     | Gold             | 1:00   | **P2**       |
+| 8     | API & Frontend   | 1:00   | **P2**       |
+| 9     | Déploiement      | 0:45   | **P2**       |
+| 10    | Résultats        | 0:45   | **P2**       |
+| 11    | Conclusion       | 1:00   | P1 + P2      |
+| **Total** |              | **~10:00** |          |
+
+**Répartition :** P1 = slides 1–5 (~4:30) · P2 = slides 6–10 (~4:30) · Conclusion partagée (~1:00)
 
 ---
 
@@ -260,5 +268,6 @@ Nous sommes disponibles pour répondre à vos questions.
 > - Ne pas lire le script mot pour mot — s'en servir comme aide-mémoire.
 > - Pointer les éléments sur le slide au moment où on les cite.
 > - Parler lentement pour les termes techniques : Debezium, Iceberg, WAL, Structured Streaming.
-> - Prévoir 2-3 minutes supplémentaires pour les questions.
-> - Se regarder mutuellement pour signaler la prise de parole sans couper.
+> - La transition slide 5→6 doit être fluide : P1 dit "je passe la parole", P2 enchaîne directement.
+> - Prévoir 2–3 minutes supplémentaires pour les questions.
+> - Slide 10 : P2 dit "je repasse la parole à Zakaria" avant slide 11.

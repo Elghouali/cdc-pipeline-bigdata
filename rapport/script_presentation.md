@@ -45,7 +45,8 @@ Notre solution : le Change Data Capture.
 Au lieu de copier toute la base périodiquement, on capture chaque modification
 — chaque INSERT, UPDATE, DELETE — au moment où elle se produit,
 et on la propage en streaming vers une architecture en couches.
-L'objectif : une latence bout-en-bout inférieure à 5 secondes.
+L'objectif : une latence bout-en-bout inférieure à 10 minutes,
+avec un passage de PostgreSQL à Kafka en moins d'une seconde.
 
 ---
 
@@ -96,20 +97,23 @@ C'est le point d'entrée unique pour toute la donnée CDC.
 **P2 :**
 La couche Silver, c'est là où on nettoie et on structure la donnée.
 
-Premier traitement : la déduplication. Debezium peut émettre des doublons.
-On utilise une fenêtre glissante avec row_number sur l'offset Kafka
-pour ne garder que la version la plus récente de chaque enregistrement.
+Premier traitement : la déduplication. Dans un micro-batch, plusieurs événements
+peuvent toucher la même clé primaire. On applique une fenêtre de partitionnement
+par clé primaire, triée par horodatage WAL décroissant (`_source_ts_ms`),
+et on ne conserve que la ligne `row_number = 1` — c'est-à-dire l'état le plus récent.
 
 **P1 :**
-Ensuite, le typage fort : les dates sont converties en DateType,
-les montants en DoubleType. On évite les erreurs silencieuses en aval.
+Ensuite, le typage fort : les dates Debezium sont encodées en entiers (jours depuis
+l'epoch Unix) — on les reconvertit en `DateType`. Les montants passent en `DoubleType`.
+On évite ainsi les erreurs silencieuses en aval.
 
-La gestion des suppressions est faite via une colonne _is_deleted booléenne,
-déduite du champ op de Debezium — plutôt que de supprimer physiquement la ligne.
+La gestion des suppressions est faite via une colonne `_is_deleted` booléenne,
+déduite du champ `op` de Debezium — plutôt que de supprimer physiquement la ligne,
+ce qui préserve l'historique complet dans la couche Silver.
 
 **P2 :**
-Enfin, un watermark de 10 minutes gère les late data,
-et les tables sont partitionnées par date d'ingestion pour optimiser les requêtes Trino.
+Les tables Silver sont partitionnées par `updated_date` — la date du traitement Silver —
+ce qui permet à Trino d'élaguer les partitions anciennes lors des requêtes analytiques.
 
 ---
 
@@ -151,13 +155,14 @@ et retourne leur statut et latence en temps réel.
 /api/metrics/{layer} interroge Trino pour récupérer le nombre de lignes
 et la partition la plus récente de chaque table — avec un cache de 30 secondes.
 
-/api/events est un flux Server-Sent Events qui consomme Kafka en direct
-et pousse les événements CDC vers le navigateur sans polling.
+/api/events/stream est un flux Server-Sent Events qui ouvre un consommateur Kafka
+dédié par connexion et pousse les événements CDC vers le navigateur sans polling.
 
 **P2 :**
-La console frontend est développée avec React 18, TypeScript et Tailwind CSS.
-Elle comporte quatre pages : la santé du pipeline, les couches de données,
-un dashboard KPI, et une vue d'ensemble de la topologie.
+La console frontend est développée avec React 18, TypeScript et Tailwind CSS —
+en thème sombre. Elle comporte six routes :
+le dashboard KPI, une page par couche Medallion (Bronze, Silver, Gold),
+une console SQL branchée sur Trino, et un flux d'événements CDC en temps réel via SSE.
 
 ---
 
@@ -165,11 +170,13 @@ un dashboard KPI, et une vue d'ensemble de la topologie.
 
 **P1 :**
 Le déploiement est entièrement conteneurisé avec Docker Compose.
-La machine hôte est une VM Oracle Cloud — 4 vCPU, 24 Go de RAM, Ubuntu 22.04.
+La machine hôte est une VM Oracle Cloud — 4 vCPU, 11,7 Go de RAM, Ubuntu 22.04.
 
-Nous avons 20 services orchestrés sur un réseau interne Docker :
-PostgreSQL, Zookeeper, Kafka, Kafka Connect, deux workers Spark,
-le catalogue Iceberg REST, MinIO, Trino, l'API FastAPI, et le frontend Nginx.
+Nous avons 21 services orchestrés sur un réseau bridge Docker :
+PostgreSQL, Zookeeper, Kafka, Kafka Connect, un Spark Master, un Spark Worker,
+MinIO avec son conteneur d'initialisation, le Hive Metastore sur MariaDB,
+Trino, Apache Superset, la stack de monitoring complète — Prometheus, Grafana,
+Loki, Alertmanager — l'API FastAPI et le frontend React.
 
 **P2 :**
 Le workflow de déploiement est simple :
@@ -185,12 +192,16 @@ La console est accessible en direct sur notre VM Oracle Cloud.
 **P1 :**
 Les résultats obtenus valident nos objectifs initiaux.
 
-La latence bout-en-bout — de l'écriture dans PostgreSQL à la disponibilité dans Iceberg —
-est inférieure à 3 secondes en conditions normales.
+Les latences mesurées par étape : PostgreSQL vers Kafka en moins d'une seconde,
+Bronze en 15 à 30 secondes, Silver entre 30 et 60 secondes,
+et la couche Gold en 3 à 5 minutes.
+La latence bout-en-bout totale est de 4 à 7 minutes — bien en dessous de
+notre objectif de 10 minutes.
 
 **P2 :**
-Nous avons six topics Kafka actifs, plus de dix-huit tables Iceberg réparties
-sur les trois couches, et la couche Gold se rafraîchit toutes les 5 minutes.
+Nous avons six topics Kafka actifs, dix-sept tables Iceberg réparties
+sur les trois couches — 6 Bronze, 6 Silver, 5 Gold —
+et la couche Gold se rafraîchit toutes les 5 minutes.
 
 Les validations clés : Debezium capture fidèlement tous les types d'opérations,
 Spark ne perd aucun message, Iceberg garantit les propriétés ACID,
@@ -207,15 +218,16 @@ dans les grandes architectures data : CDC, Lakehouse, streaming.
 
 **P2 :**
 Les perspectives d'évolution sont nombreuses.
-On pourrait ajouter Prometheus et Grafana pour l'observabilité,
-migrer vers Apache Flink pour des traitements stateful plus avancés,
-ou déployer des modèles de machine learning directement sur la couche Gold
-pour de la prédiction de churn ou de la détection de fraude.
+L'observabilité est déjà en place — Prometheus, Grafana, Loki et Alertmanager
+tournent dans le stack. La prochaine étape naturelle est le déploiement sur
+Kubernetes pour l'auto-scaling des workers Spark selon la charge.
 
 **P1 :**
-Nous avons également envisagé un passage sur Kubernetes pour l'auto-scaling des workers Spark
-selon la charge, et l'ajout d'un Schema Registry Confluent pour formaliser
-les contrats d'API entre producteurs et consommateurs Kafka.
+Nous envisageons également un Schema Registry Confluent pour formaliser
+les contrats d'interface entre producteurs et consommateurs Kafka,
+l'ajout d'une Dead Letter Queue pour tracer les événements malformés,
+et l'intégration de modèles de machine learning sur la couche Gold
+pour de la prédiction de churn ou de la détection de fraude.
 
 **P2 :**
 Nous vous remercions pour votre attention.

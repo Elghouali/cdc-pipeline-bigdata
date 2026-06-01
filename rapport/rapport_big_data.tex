@@ -168,7 +168,7 @@ d'interroger toutes les couches en SQL standard. L'ensemble est exposé via
 une API REST FastAPI sécurisée par JWT, un tableau de bord interactif React,
 et supervisé par Prometheus, Grafana et Loki.
 
-La solution est entièrement conteneurisée (Docker Compose, 20 services),
+La solution est entièrement conteneurisée (Docker Compose, 21 services),
 déployée sur une machine virtuelle Oracle Cloud Infrastructure (Ubuntu~22.04,
 11,7~Go RAM), et conçue pour être reproductible et opérationnelle en moins de
 15~minutes sur n'importe quelle machine disposant de Docker.
@@ -218,7 +218,7 @@ leaders dans l'industrie.
     \item Exposer les données via une API REST sécurisée (JWT) et un tableau
           de bord interactif.
     \item Déployer l'ensemble sur une infrastructure conteneurisée
-          auto-suffisante (Docker Compose, 20 services).
+          auto-suffisante (Docker Compose, 21 services).
 \end{enumerate}
 
 \section{Organisation du rapport}
@@ -364,7 +364,7 @@ Métastore              & Hive Standalone + MariaDB    & 3.1.3 + 10.11   \\
 Stockage objet         & MinIO (S3-compatible)        & 2024-01-16       \\
 Moteur SQL             & Trino                        & 435              \\
 API REST               & FastAPI + Uvicorn            & 0.110+           \\
-Authentification       & JWT (HS256) via python-jose  & 3.3+             \\
+Authentification       & JWT (HS256) via PyJWT        & 2.8+             \\
 Interface web          & React + TypeScript + Vite    & 18 + 5           \\
 Visualisation BI       & Apache Superset              & 3.1.0            \\
 Monitoring métriques   & Prometheus                   & 2.50.1           \\
@@ -450,7 +450,7 @@ transactionnelle vers les couches analytiques.
 \draw[arr, cyan!60]   (tr.east) -- (fe.west);
 \draw[arr, gray!50]   (api.north east) to[bend left=15] (fe.north west);
 \end{tikzpicture}
-\caption{Architecture globale du pipeline CDC Medallion (20 services)}
+\caption{Architecture globale du pipeline CDC Medallion (21 services)}
 \label{fig:archi}
 \end{figure}
 
@@ -477,7 +477,7 @@ transactionnelle vers les couches analytiques.
 \section{Inventaire des services Docker}
 
 \begin{longtable}{llll}
-\caption{Inventaire des 20 services Docker Compose}
+\caption{Inventaire des 21 services Docker Compose}
 \label{tab:services}\\
 \toprule
 \textbf{Service} & \textbf{Image} & \textbf{Version} & \textbf{Rôle} \\
@@ -498,6 +498,7 @@ Zookeeper       & confluentinc/cp-zookeeper               & 7.5.0    & Coordinat
 Kafka           & confluentinc/cp-kafka                   & 7.5.0    & Bus de messages        \\
 Kafka Connect   & debezium/connect                        & 2.5      & Connecteur CDC         \\
 MinIO           & minio/minio                             & 2024-01  & Stockage objet S3      \\
+MinIO Init      & minio/mc (one-shot)                     & latest   & Création bucket warehouse \\
 MariaDB         & mariadb                                 & 10.11    & Backend Hive           \\
 Hive Metastore  & build ./hive                            & 3.1.3    & Catalogue de tables    \\
 Spark Master    & apache/spark                            & 3.5.3    & Orchestrateur Spark    \\
@@ -516,10 +517,10 @@ Frontend        & node                                    & 20-alpine & Interfac
 \end{longtable}
 
 Tous les services partagent le réseau Docker bridge \texttt{cdc-net}.
-Les données persistantes sont stockées dans 8 volumes Docker nommés :
+Les données persistantes sont stockées dans 9 volumes Docker nommés :
 \texttt{postgres-data}, \texttt{minio-data}, \texttt{mariadb-data},
-\texttt{kafka-data}, \texttt{zookeeper-data}, \texttt{ivy2-cache},
-\texttt{prometheus-data} et \texttt{grafana-data}.
+\texttt{kafka-data}, \texttt{zookeeper-data}, \texttt{zookeeper-log},
+\texttt{ivy2-cache}, \texttt{prometheus-data} et \texttt{grafana-data}.
 
 %% ════════════════════════════════════════════════════════════
 \chapter{Implémentation du Pipeline de Données}
@@ -567,24 +568,38 @@ Les champs énumérés incluent :
 
 \section{Configuration de la réplication PostgreSQL}
 
+\begin{lstlisting}[language={},
+    caption={Paramètres WAL injectés via docker-compose.yml (commande postgres)}]
+# Les parametres WAL sont passes en argument de demarrage du conteneur,
+# ce qui evite tout ALTER SYSTEM necessitant un redemarrage.
+postgres
+  -c wal_level=logical
+  -c max_wal_senders=4
+  -c max_replication_slots=4
+  -c track_commit_timestamp=on
+\end{lstlisting}
+
 \begin{lstlisting}[language=SQL,
-    caption={Initialisation de la réplication logique (sql/init.sql)}]
--- Activation dans postgresql.conf (via commande ALTER SYSTEM)
-ALTER SYSTEM SET wal_level = 'logical';
-ALTER SYSTEM SET max_wal_senders = 4;
-ALTER SYSTEM SET max_replication_slots = 4;
+    caption={Utilisateur Debezium et publication logique (sql/init.sql)}]
+-- Utilisateur Debezium avec privilege de replication
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'debezium') THEN
+        CREATE USER debezium WITH PASSWORD 'debezium' REPLICATION LOGIN;
+    END IF;
+END
+$$;
 
--- Utilisateur Debezium avec privilège de réplication
-CREATE USER debezium WITH REPLICATION LOGIN
-    PASSWORD 'debezium_secure_pass';
+GRANT USAGE  ON SCHEMA public TO debezium;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
-GRANT USAGE ON SCHEMA public TO debezium;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON TABLES TO debezium;
 
--- Publication logique sur toutes les tables
-CREATE PUBLICATION debezium_pub FOR ALL TABLES;
-
--- Slot de réplication (plugin natif PostgreSQL)
-SELECT pg_create_logical_replication_slot('debezium_slot', 'pgoutput');
+-- Publication sur les 6 tables surveillees uniquement (portee limitee)
+CREATE PUBLICATION debezium_pub
+    FOR TABLE customers, products, orders,
+              order_items, payments, returns;
+-- Note : Debezium cree et gere automatiquement son slot de replication.
 \end{lstlisting}
 
 \section{Connecteur Debezium}
@@ -594,7 +609,7 @@ Le connecteur est enregistré via l'API REST de Kafka Connect~:
 \begin{lstlisting}[language={},
     caption={Configuration du connecteur Debezium (config/debezium-connector.json)}]
 {
-  "name": "ecommerce-postgres-connector",
+  "name": "cdc-postgres",
   "config": {
     "connector.class":
         "io.debezium.connector.postgresql.PostgresConnector",
@@ -605,12 +620,13 @@ Le connecteur est enregistré via l'API REST de Kafka Connect~:
     "database.server.name":    "cdc",
     "plugin.name":             "pgoutput",
     "publication.name":        "debezium_pub",
-    "slot.name":               "debezium_slot",
     "snapshot.mode":           "initial",
     "decimal.handling.mode":   "double",
     "time.precision.mode":     "connect",
     "tombstones.on.delete":    "false",
-    "heartbeat.interval.ms":   "10000"
+    "heartbeat.interval.ms":   "10000",
+    "key.converter.schemas.enable":   "false",
+    "value.converter.schemas.enable": "false"
   }
 }
 \end{lstlisting}
@@ -622,7 +638,7 @@ Le connecteur produit 6 topics Kafka :
 
 \section{Couche Bronze --- Ingestion brute}
 
-Le job Bronze (\texttt{spark\_jobs/bronze\_job.py}, 173~lignes) consomme les
+Le job Bronze (\texttt{spark\_jobs/bronze\_job.py}, 179~lignes) consomme les
 6~topics Kafka et écrit dans des tables Iceberg en mode \textbf{append-only}.
 Chaque événement est conservé tel quel, sans transformation, garantissant
 l'auditabilité complète.
@@ -651,47 +667,64 @@ l'auditabilité complète.
 \end{table}
 
 \begin{lstlisting}[language=Python,
-    caption={Extrait du job Bronze --- lecture Kafka et écriture Iceberg}]
-# Lecture des 6 topics Kafka
-df_kafka = (spark.readStream
-    .format("kafka")
-    .option("kafka.bootstrap.servers", "kafka:9092")
-    .option("subscribe", ",".join(CDC_TOPICS))
-    .option("startingOffsets", "earliest")
-    .option("maxOffsetsPerTrigger", 10_000)
-    .load())
+    caption={Extrait du job Bronze --- 6 streams independants, un par table}]
+TABLES = ["customers","products","orders",
+          "order_items","payments","returns"]
 
-# Parsing du payload Debezium (JSON)
-df_parsed = df_kafka.select(
-    col("offset").alias("kafka_offset"),
-    col("topic").alias("kafka_topic"),
-    col("timestamp").alias("kafka_timestamp"),
-    get_json_object(col("value_str"), "$.op").alias("op"),
-    get_json_object(col("value_str"), "$.before").alias("before_payload"),
-    get_json_object(col("value_str"), "$.after").alias("after_payload"),
-    get_json_object(col("value_str"), "$.source.ts_ms")
-        .cast("long").alias("source_ts_ms"),
-    current_timestamp().alias("ingestion_timestamp"),
-    current_date().alias("ingestion_date"),
-)
+def parse_and_write(spark, table, df, batch_id):
+    parsed = (df
+        .withColumn("raw_str", col("value").cast("string"))
+        # schemas.enable=false : le message EST le payload (pas de wrapper).
+        # Repli sur $.payload si le connecteur repasse en schemas active.
+        .withColumn("payload", coalesce(
+            get_json_object(col("raw_str"), "$.payload"),
+            col("raw_str")))
+        .withColumn("op",           get_json_object(col("payload"), "$.op"))
+        .withColumn("before_payload",get_json_object(col("payload"),"$.before"))
+        .withColumn("after_payload", get_json_object(col("payload"),"$.after"))
+        .withColumn("source_ts_ms",
+            get_json_object(col("payload"),"$.source.ts_ms").cast("long"))
+        .withColumn("ingestion_timestamp", current_timestamp())
+        .withColumn("ingestion_date",      current_date()))
 
-# Ecriture en streaming (append-only) dans Iceberg
-def write_bronze(batch_df, batch_id, table_name):
-    (batch_df.writeTo(f"iceberg.analytics.bronze_{table_name}_cdc")
-        .option("mergeSchema", "true")
-        .append())
+    # Separation lignes valides / invalides en un seul passage
+    # (heartbeats Debezium -> op=null, ne doivent pas etre persistes)
+    valid   = parsed.filter(col("op").isNotNull())
+    invalid = parsed.filter(col("op").isNull())
 
-query = (df_parsed.writeStream
-    .foreachBatch(lambda df, bid: write_bronze(df, bid, table_name))
-    .trigger(processingTime="30 seconds")
-    .option("checkpointLocation",
-            f"s3a://warehouse/checkpoints/bronze/{table_name}")
-    .start())
+    dropped = invalid.count()
+    if dropped > 0:
+        logger.warning("Batch %d | %s | %d lignes null-op ignorees",
+                       batch_id, table, dropped)
+
+    valid.writeTo(f"iceberg.analytics.bronze_{table}_cdc").append()
+
+def start_table_stream(spark, table):
+    # Chaque table a son propre stream et son propre checkpoint.
+    # Cela permet une recuperation individuelle en cas de defaillance.
+    return (spark.readStream
+        .format("kafka")
+        .option("kafka.bootstrap.servers", "kafka:9092")
+        .option("subscribe", f"cdc.public.{table}")
+        .option("startingOffsets", "earliest")
+        .option("maxOffsetsPerTrigger", 10_000)
+        .option("failOnDataLoss", "false")
+        .load()
+        .writeStream
+        .foreachBatch(lambda df, bid: parse_and_write(spark, table, df, bid))
+        .option("checkpointLocation",
+                f"s3a://warehouse/checkpoints/bronze/{table}")
+        .trigger(processingTime="30 seconds")
+        .start())
+
+# Lancement de 6 streams independants, un par table source
+[start_table_stream(spark, t) for t in TABLES]
+spark.streams.awaitAnyTermination()
 \end{lstlisting}
 
 \section{Couche Argent --- Déduplication et typage fort}
 
-Le job Argent (\texttt{spark\_jobs/silver\_job.py}, 247~lignes) lit en
+Le job Argent (\texttt{spark\_jobs/silver\_job.py}, 252~lignes) lit en
 continu les tables Bronze et applique un \texttt{MERGE INTO} Iceberg pour
 maintenir l'état courant de chaque entité (micro-batch de 60~secondes).
 
@@ -715,19 +748,27 @@ df_dedup = (df_parsed
 \subsection{Opération MERGE INTO Iceberg}
 
 \begin{lstlisting}[language=Python,
-    caption={Upsert atomique Iceberg via MERGE INTO}]
+    caption={Upsert atomique Iceberg via MERGE INTO (vue global\_temp)}]
+# La vue est enregistree en global_temp (et non en session temp).
+# Raison : spark.sql.defaultCatalog=iceberg fait que Spark cherche
+# les vues non qualifiees dans le catalogue Iceberg, ce qui echoue.
+# global_temp.{view} contourne ce probleme de resolution de catalogue.
+view = f"_silver_src_{table}_{batch_id}"
+deduped.select(all_cols).createOrReplaceGlobalTempView(view)
+
 spark.sql(f"""
-    MERGE INTO iceberg.analytics.silver_{table} AS target
-    USING updates AS source
-    ON target.id = source.id
-    WHEN MATCHED AND source._is_deleted = true
-        THEN UPDATE SET
-            target._is_deleted = true,
-            target._updated_at  = current_timestamp()
-    WHEN MATCHED
-        THEN UPDATE SET *
-    WHEN NOT MATCHED AND source._is_deleted = false
-        THEN INSERT *
+    MERGE INTO iceberg.analytics.silver_{table} t
+    USING global_temp.{view} s
+    ON    t.{pk} = s.{pk}
+    WHEN MATCHED AND s._is_deleted = true THEN
+        UPDATE SET t._is_deleted = true,
+                   t._op         = 'd',
+                   t._updated_at = s._updated_at,
+                   t.updated_date = s.updated_date
+    WHEN MATCHED THEN
+        UPDATE SET {set_sql}
+    WHEN NOT MATCHED AND s._is_deleted = false THEN
+        INSERT ({ins_cols}) VALUES ({ins_vals})
 """)
 \end{lstlisting}
 
@@ -737,7 +778,7 @@ Les tables Argent ajoutent 4 colonnes de métadonnées à chaque ligne :
 
 \section{Couche Or --- Agrégats métier}
 
-Le job Or (\texttt{spark\_jobs/gold\_job.py}, 336~lignes) produit
+Le job Or (\texttt{spark\_jobs/gold\_job.py}, 364~lignes) produit
 5~tables analytiques en agrégeant la couche Argent toutes les 5~minutes.
 
 \begin{table}[h]
@@ -770,29 +811,46 @@ Le job Or (\texttt{spark\_jobs/gold\_job.py}, 336~lignes) produit
 
 \begin{lstlisting}[language=Python,
     caption={Agrégation des faits de vente --- gold\_sales\_facts}]
-gold_sales = (silver_orders
-    .join(silver_customers,   "customer_id", "left")
-    .join(
-        silver_order_items.join(silver_products, "product_id"),
-        "order_id", "left")
-    .groupBy("order_date", "channel", "customer_segment",
-             "product_category")
+gold_sales = (silver_order_items
+    .join(silver_products.select(
+              col("id").alias("prid"), "category"),
+          silver_order_items.product_id == col("prid"), "left")
+    .join(silver_orders.select(
+              col("id").alias("oid"),
+              "order_date", "customer_id", "status", "channel"),
+          silver_order_items.order_id == col("oid"), "left")
+    .join(silver_customers.select(
+              col("id").alias("cid"), "segment"),
+          col("customer_id") == col("cid"), "left")
+    .groupBy(
+        col("order_date").alias("sale_date"), "channel",
+        col("segment").alias("customer_segment"),
+        col("category").alias("product_category"))
     .agg(
-        count("order_id").alias("order_count"),
-        sum(when(col("status").isin("delivered", "shipped"),
-                 col("unit_price") * col("quantity"))
-           ).alias("gross_revenue"),
-        sum(when(col("status") == "returned",
-                 lit(1))).alias("returned_count"),
-        avg(col("unit_price") * col("quantity"))
-            .alias("avg_order_value"),
+        countDistinct(silver_order_items.order_id).alias("order_count"),
+        # countDistinct par statut : evite de compter plusieurs fois
+        # la meme commande qui a plusieurs lignes d'articles.
+        countDistinct(when(col("status") == "delivered",
+            silver_order_items.order_id)).alias("delivered_count"),
+        countDistinct(when(col("status") == "cancelled",
+            silver_order_items.order_id)).alias("cancelled_count"),
+        countDistinct(when(col("status") == "returned",
+            silver_order_items.order_id)).alias("returned_count"),
+        F.sum(col("quantity") * col("unit_price")).alias("gross_revenue"),
+        F.sum(when(col("status").isin("delivered","shipped"),
+              col("quantity") * col("unit_price")).otherwise(0.0)
+             ).alias("net_revenue"),
+        F.sum("quantity").alias("total_items_sold"),
     )
+    # avg_order_value = revenu_brut / nb_commandes (pas avg des lignes)
+    .withColumn("avg_order_value",
+        when(col("order_count") > 0,
+             col("gross_revenue") / col("order_count")).otherwise(0.0))
+    .withColumn("_updated_at",   current_timestamp())
     .withColumn("snapshot_date", current_date()))
 
-# Réécriture de la partition du jour (idempotent)
-(gold_sales.writeTo("iceberg.analytics.gold_sales_facts")
-    .option("partitionOverwriteMode", "dynamic")
-    .overwritePartitions())
+# Réécriture de la partition du jour (idempotent, cycle 5 min)
+gold_sales.writeTo("iceberg.analytics.gold_sales_facts").overwritePartitions()
 \end{lstlisting}
 
 \section{Configuration Iceberg et connexion S3A/MinIO}
@@ -870,7 +928,7 @@ validité 60~minutes). Ce token est transmis dans le header
 
 \begin{table}[h]
 \centering
-\caption{Endpoints de l'API REST}
+\caption{Endpoints de l'API REST (13 endpoints, 7 routeurs)}
 \label{tab:api}
 \renewcommand{\arraystretch}{1.3}
 \begin{tabularx}{\linewidth}{llXl}
@@ -879,18 +937,33 @@ validité 60~minutes). Ce token est transmis dans le header
 \midrule
 POST  & \texttt{/auth/login}
     & Connexion, retourne un JWT & Non \\
+POST  & \texttt{/auth/logout}
+    & Déconnexion (stateless, côté client) & Non \\
 GET   & \texttt{/auth/me}
     & Profil de l'utilisateur connecté & Oui \\
+\midrule
 GET   & \texttt{/api/health}
     & Statut et latence des 5 services & Non \\
 GET   & \texttt{/api/metrics/\{layer\}}
-    & Comptage de lignes par table Iceberg & Oui \\
+    & Comptage de lignes par table Iceberg (cache 30~s) & Oui \\
 POST  & \texttt{/api/query}
-    & SQL SELECT vers Trino, réponse NDJSON & Oui \\
+    & SQL SELECT vers Trino, réponse NDJSON streamée & Oui \\
+GET   & \texttt{/api/events/stream}
+    & Flux SSE temps réel des événements Kafka CDC & Oui \\
+\midrule
+GET   & \texttt{/api/connector/status}
+    & Statut du connecteur Debezium & Non \\
+POST  & \texttt{/api/connector/restart}
+    & Redémarrage du connecteur Debezium & Admin \\
+GET   & \texttt{/api/spark/jobs}
+    & 20 derniers jobs (Spark History Server) & Non \\
+GET   & \texttt{/api/spark/running}
+    & Applications actives sur le Spark Master & Non \\
+\midrule
 GET   & \texttt{/api/alerts}
     & Liste des alertes pipeline & Oui \\
 PATCH & \texttt{/api/alerts/\{id\}/ack}
-    & Acquittement d'alerte & Admin \\
+    & Acquittement d'alerte & Oui \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -907,6 +980,24 @@ HTTP~400. Seuls les \texttt{SELECT} sont autorisés.
 
 Les résultats volumineux sont renvoyés en \textit{Newline-Delimited JSON}
 via \texttt{StreamingResponse}, évitant de charger toute la réponse en mémoire.
+
+\subsection{Flux SSE --- Kafka en temps réel}
+
+L'endpoint \texttt{GET /api/events/stream} ouvre un consommateur Kafka
+\textit{par connexion} avec un \texttt{group\_id} unique
+(\texttt{cdc-ui-consumer-<uuid>}). Ce choix garantit que chaque onglet
+navigateur reçoit l'intégralité des événements, sans que Kafka les
+répartisse entre clients. Un heartbeat \texttt{: keep-alive} est émis
+toutes les 15~secondes pour maintenir la connexion ouverte.
+
+\subsection{Contrainte d'unicité du worker Uvicorn}
+
+Le Dockerfile de production lance un \textbf{unique} worker Uvicorn
+(sans l'option \texttt{--workers}). Ce choix est délibéré : plusieurs
+workers maintiendraient chacun un cache mémoire indépendant pour l'endpoint
+\texttt{/api/metrics}, multipliant les requêtes Trino inutiles. Pour
+passer à l'échelle, il convient de déployer plusieurs conteneurs derrière
+un équilibreur de charge et de remplacer le cache en mémoire par Redis.
 
 \begin{lstlisting}[language=Python,
     caption={Endpoint /api/query --- streaming NDJSON}]
@@ -926,33 +1017,45 @@ async def run_query(body: QueryRequest,
 \section{Interface Utilisateur React}
 
 Le frontend est une application monopage développée en React~18 avec
-TypeScript, Vite et Tailwind CSS, organisée en 4 vues :
+TypeScript, Vite et Tailwind CSS (thème sombre), organisée en 6 routes :
 
 \begin{table}[h]
 \centering
-\caption{Pages de l'interface utilisateur}
+\caption{Pages de l'interface utilisateur (6 routes)}
 \label{tab:pages}
 \renewcommand{\arraystretch}{1.3}
-\begin{tabularx}{\linewidth}{lXl}
+\begin{tabularx}{\linewidth}{llXl}
 \toprule
-\textbf{Page} & \textbf{Contenu} & \textbf{Rafraîchissement} \\
+\textbf{Route} & \textbf{Page} & \textbf{Contenu} & \textbf{Rafraîchissement} \\
 \midrule
-Pipeline Health
-    & Statut (UP/DOWN) et latence en ms de chaque service
-      avec barres de progression colorées
-    & Auto 10 s \\
-Data Layers
-    & Comptage de lignes et barres de volume pour les 3 couches
-      Bronze / Argent / Or
+\texttt{/dashboard}
+    & KPI Overview
+    & KPIs animés (count-up), flux Kafka simulé, statut
+      des services, cartes Medallion avec jauges de volume
+    & Auto 30 s \\
+\texttt{/bronze}
+    & Bronze Layer
+    & Liste des tables Iceberg avec comptage de lignes,
+      date de partition, taille ; tiroir de schéma latéral
     & Manuel \\
-KPI Dashboard
-    & Revenus (zone), canaux (barres), paiements (camembert),
-      segments, catégories (Recharts)
-    & Au chargement \\
-Overview
-    & Topologie du pipeline en temps réel, statut santé
-      par nœud, résumé Medallion
+\texttt{/silver}
+    & Silver Layer
+    & Idem Bronze — données dédupliquées et typées
     & Manuel \\
+\texttt{/gold}
+    & Gold Layer
+    & Idem Bronze — agrégats métier prêts à l'analyse
+    & Manuel \\
+\texttt{/query}
+    & Query Console
+    & Éditeur SQL Monaco (thème sombre), exécution vers Trino,
+      résultats tabulaires streamés en NDJSON, export CSV
+    & À la demande \\
+\texttt{/stream}
+    & Event Stream
+    & Flux SSE en direct des événements CDC Kafka,
+      filtre par table et topic, vues Tableau et Timeline
+    & Temps réel (SSE) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1010,7 +1113,7 @@ Système d'exploitation   & Ubuntu 22.04 LTS \\
 RAM totale               & 11,67 Go \\
 vCPU                     & 4 \\
 Stockage                 & 50 Go (SSD) \\
-Orchestration            & Docker Compose v2 (20 services) \\
+Orchestration            & Docker Compose v2 (21 services) \\
 Dépôt source             & GitHub (git pull \& restart) \\
 \bottomrule
 \end{tabular}
@@ -1040,16 +1143,21 @@ Hive Metastore  & 700 Mo  & Paramètre par défaut Hive                      \\
 \end{tabular}
 \end{table}
 
-Le problème Trino résultait d'une contrainte Iceberg : la somme de
-\texttt{query.max-memory-per-node} et de \texttt{memory.heap-headroom-per-node}
-doit être strictement inférieure à la taille du heap JVM (\texttt{-Xmx}).
-La configuration finale retenue :
+Le problème Trino résultait d'une contrainte de configuration : la somme de
+\texttt{query.max-memory-per-node} (1~Go) et de
+\texttt{memory.heap-headroom-per-node} (256~Mo) doit être strictement
+inférieure à la taille du heap JVM (\texttt{-Xmx2G}). En déploiement
+mono-nœud, \texttt{query.max-memory-per-node} plafonne toujours en premier,
+ce qui rend inutile de fixer \texttt{query.max-memory} au-dessus de 1~Go.
+La configuration retenue :
 
 \begin{lstlisting}[caption={config/trino/config.properties --- limites mémoire}]
-query.max-memory=2GB
+query.max-memory=1GB
 query.max-memory-per-node=1GB
 memory.heap-headroom-per-node=256MB
-# Contrainte : 1 Go + 256 Mo = 1,25 Go < 2 Go (Xmx) => valide
+# Deploiement mono-noeud : query.max-memory-per-node plafonne toujours
+# en premier. Fixer query.max-memory > 1 GB serait sans effet et trompeur.
+# Contrainte respectee : 1 Go + 256 Mo = 1,25 Go < 2 Go (Xmx JVM).
 \end{lstlisting}
 
 \section{Séquence de démarrage}
@@ -1156,10 +1264,22 @@ infrastructure mono-machine à faible coût. Les principaux acquis sont :
           rencontré et résolu lors du déploiement.
 
     \item \textbf{Observabilité complète} : stack Prometheus + Grafana + Loki
-          pour les métriques, dashboards et logs de 20 services.
+          pour les métriques, dashboards et logs de 21 services.
 
     \item \textbf{API et interface} : exposition sécurisée des données via
-          FastAPI (JWT, streaming NDJSON) et tableau de bord React temps réel.
+          FastAPI (JWT, streaming NDJSON, SSE Kafka) et tableau de bord
+          React en thème sombre avec 6 vues opérationnelles.
+
+    \item \textbf{Fiabilité du code} : suite de 56 tests automatisés
+          (pytest) couvrant les 7 routeurs de l'API avec des mocks corrects
+          du gestionnaire de contexte asynchrone AsyncPG ; validation de
+          sécurité des secrets au démarrage.
+
+    \item \textbf{Robustesse du job Bronze} : suppression du pattern
+          \texttt{cache()/count()/writeTo()} qui matérialisait l'intégralité
+          du micro-batch en mémoire exécuteur, source potentielle d'OOM ;
+          remplacement par un filtrage en un seul passage avec journalisation
+          des événements écartés (heartbeats Debezium).
 \end{enumerate}
 
 \section{Difficultés rencontrées}
@@ -1188,29 +1308,42 @@ infrastructure mono-machine à faible coût. Les principaux acquis sont :
 \section{Perspectives d'amélioration}
 
 \begin{enumerate}
+    \item \textbf{CI/CD GitHub Actions} : pipeline lint + test + build
+          d'image Docker déclenché à chaque pull request ; déploiement
+          automatique sur la VM OCI à chaque merge sur \texttt{main}.
+
     \item \textbf{Déploiement Kubernetes} : migration vers un cluster K8s
-          (manifestes et charts Helm déjà présents dans \texttt{k8s/} et
-          \texttt{helm/}) pour la scalabilité horizontale et la haute
-          disponibilité.
+          (manifestes Kustomize et chart Helm déjà présents dans \texttt{k8s/}
+          et \texttt{helm/}) pour la scalabilité horizontale et la haute
+          disponibilité. Prévoir Strimzi Kafka Operator et Spark-on-K8s.
 
     \item \textbf{Optimisation Iceberg v2} : utilisation des suppressions au
           niveau ligne (\textit{position deletes}) et du \textit{z-ordering}
           pour accélérer les requêtes analytiques sur les grandes tables Or.
+          Planifier les jobs de compaction (\texttt{rewrite\_data\_files},
+          \texttt{expire\_snapshots}) pour contenir la croissance des petits
+          fichiers Parquet.
 
     \item \textbf{Qualité des données} : intégration d'un framework de
           validation (Great Expectations, dbt) entre les couches Argent et Or
-          pour détecter les anomalies dès leur apparition.
+          pour détecter les anomalies (régression du nombre de lignes $>20$\,\%,
+          clés primaires nulles, latence SLA) dès leur apparition.
+
+    \item \textbf{Dead Letter Queue} : router les événements Debezium
+          malformés vers un topic \texttt{\{table\}.dlq} au lieu de les
+          ignorer silencieusement, afin d'offrir une traçabilité complète des
+          données écartées.
 
     \item \textbf{Machine Learning} : exposition de la couche Or à MLflow pour
           construire des modèles prédictifs (churn client, détection de fraude,
           recommandation de produits).
 
     \item \textbf{Multi-sources} : extension à d'autres bases (MySQL, MongoDB)
-          via des connecteurs Debezium supplémentaires, avec union des schémas
-          dans la couche Argent.
+          via des connecteurs Debezium supplémentaires.
 
-    \item \textbf{Alerting métier} : règles d'alerte directement sur les KPI
-          Or (baisse du taux de conversion, pic de retours, dérive des revenus).
+    \item \textbf{Cache distribué} : remplacement du cache mémoire de
+          l'endpoint \texttt{/api/metrics} par Redis, permettant le passage à
+          plusieurs workers Uvicorn ou conteneurs API en parallèle.
 \end{enumerate}
 
 %% ════════════════════════════════════════════════════════════
@@ -1327,39 +1460,54 @@ bash scripts/simulate_changes.sh
 cdc-pipeline/
 ├── api/                        # API REST FastAPI (Python 3.11)
 │   ├── main.py                 # Point d'entrée, lifespan, CORS
-│   ├── auth.py                 # JWT : émission et vérification
+│   ├── auth.py                 # JWT : émission et vérification (PyJWT)
+│   ├── config.py               # Settings + validation sécurité au démarrage
 │   ├── trino_client.py         # Client Trino asynchrone (httpx)
 │   ├── db.py                   # Pool AsyncPG, users, alerts
-│   ├── routers/                # 7 modules d'endpoints
+│   ├── routers/                # 7 modules d'endpoints (13 routes)
 │   │   ├── health.py           # GET /api/health
 │   │   ├── query.py            # POST /api/query (NDJSON)
-│   │   ├── metrics.py          # GET /api/metrics/{layer}
+│   │   ├── metrics.py          # GET /api/metrics/{layer} (cache 30s)
 │   │   ├── alerts.py           # GET/PATCH /api/alerts
-│   │   ├── events.py           # Kafka events
-│   │   ├── connector.py        # Debezium management
-│   │   └── spark.py            # Spark job monitoring
-│   └── Dockerfile
+│   │   ├── events.py           # GET /api/events/stream (SSE Kafka)
+│   │   ├── connector.py        # GET|POST /api/connector
+│   │   └── spark.py            # GET /api/spark/jobs|running
+│   ├── tests/                  # Suite de tests (56 tests, pytest)
+│   │   ├── test_health.py      # Santé + root endpoint
+│   │   ├── test_auth.py        # Login, logout, /auth/me
+│   │   ├── test_metrics.py     # Métriques par layer + cache
+│   │   ├── test_query.py       # Validation SQL + streaming
+│   │   ├── test_connector.py   # Statut + redémarrage connecteur
+│   │   ├── test_alerts.py      # Liste + acquittement alertes
+│   │   └── test_spark.py       # Jobs + running Spark
+│   └── Dockerfile              # python:3.11-slim, 1 worker Uvicorn
 ├── config/
-│   ├── debezium-connector.json # Configuration connecteur CDC
 │   ├── hive/hive-site.xml      # Metastore + S3A
 │   ├── spark/spark-defaults.conf  # Iceberg + S3A + JARs
 │   └── trino/
-│       ├── config.properties   # Mémoire, port, discovery
+│       ├── config.properties   # 1 Go/noeud, port 8080, discovery
 │       ├── jvm.config          # -Xmx2G, GC, CodeCache
 │       └── catalog/iceberg.properties
-├── frontend/                   # React 18 + TypeScript + Tailwind
-├── monitoring/                 # Prometheus, Grafana, Loki
+├── frontend/                   # React 18 + TypeScript + Tailwind (thème sombre)
+│   └── src/
+│       ├── pages/              # 6 routes : dashboard, layers, query, stream
+│       ├── components/         # Sidebar, TopBar, Badge, Button...
+│       └── index.css           # Design system sombre, palette Claude
+├── monitoring/                 # Prometheus, Grafana, Loki, Alertmanager
 ├── spark_jobs/
-│   ├── bronze_job.py           # 173 lignes : Kafka → Bronze
-│   ├── silver_job.py           # 247 lignes : Bronze → Argent
-│   └── gold_job.py             # 336 lignes : Argent → Or
+│   ├── bronze_job.py           # 179 lignes : Kafka → Bronze (6 streams)
+│   ├── silver_job.py           # 252 lignes : Bronze → Argent (MERGE INTO)
+│   └── gold_job.py             # 364 lignes : Argent → Or (5 tables)
 ├── sql/
-│   ├── init.sql                # DDL, réplication, Debezium user
-│   └── seed.sql                # Données initiales (~100 lignes)
+│   ├── init.sql                # DDL, réplication, Debezium user, publication
+│   └── seed.sql                # Données initiales (~100 lignes par table)
 ├── scripts/                    # Automatisation opérationnelle
-├── k8s/                        # Manifestes Kubernetes
-├── helm/                       # Charts Helm
-└── docker-compose.yml          # 20 services, réseau cdc-net
+│   ├── register_connector.sh   # Enregistrement connecteur Debezium
+│   ├── simulate_changes.sh     # Génération de flux CDC continu
+│   └── start.sh                # Démarrage ordonné complet
+├── k8s/                        # Manifestes Kubernetes (Kustomize)
+├── helm/                       # Chart Helm cdc-pipeline
+└── docker-compose.yml          # 21 services, réseau cdc-net, 9 volumes
 \end{lstlisting}
 
 \chapter{Glossaire}

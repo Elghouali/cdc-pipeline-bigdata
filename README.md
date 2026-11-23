@@ -1,6 +1,19 @@
 # CDC Pipeline — Near Real-Time Medallion Lakehouse
 
-A fully self-contained, enterprise-grade Change Data Capture pipeline that
+**PostgreSQL · Debezium · Apache Kafka · Spark Structured Streaming · Apache Iceberg · Trino · React/FastAPI**
+
+[![Data Engineering](https://img.shields.io/badge/Focus-Data_Engineering-2F6FED)](https://github.com/Elghouali)
+[![Kafka](https://img.shields.io/badge/Kafka-CDC_Streaming-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![Spark](https://img.shields.io/badge/Apache_Spark-Processing-E25A1C?logo=apachespark&logoColor=white)](https://spark.apache.org/)
+[![Iceberg](https://img.shields.io/badge/Lakehouse-Apache_Iceberg-2A93D5)](https://iceberg.apache.org/)
+[![Docker](https://img.shields.io/badge/Local_Stack-Docker_Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+
+> **Portfolio snapshot:** An end-to-end reference project for capturing database changes, transporting events, building Bronze/Silver/Gold lakehouse tables, and exposing analytics through SQL, APIs, dashboards, and observability tooling. Review the setup, tests, and limitations below before treating it as production-ready.
+
+**Explore:** [Architecture](#architecture) · [Stack](#stack) · [Quick start](#quick-start) · [Repository files](https://github.com/Elghouali/cdc-pipeline-bigdata)
+
+
+A self-contained Change Data Capture reference pipeline that
 captures row-level changes from a PostgreSQL e-commerce database, streams
 them through Kafka, transforms them across three Iceberg medallion layers
 with Apache Spark, and exposes everything through a custom React dashboard

@@ -77,7 +77,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: ${{ hashFiles('frontend/package.json') != '' }}
     # continue-on-error removed — frontend is complete; lint failures must block CI.
     steps:
       - name: Checkout
@@ -149,7 +148,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: ${{ hashFiles('frontend/package.json') != '' }}
     # continue-on-error removed — frontend is complete; test failures must block CI.
     steps:
       - name: Checkout

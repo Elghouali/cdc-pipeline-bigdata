@@ -84,7 +84,7 @@ async def _metric_for_table_safe(table: str) -> TableMetric:
     except asyncio.TimeoutError:
         logger.warning("Timeout collecting metrics for %s", table)
         return TableMetric(table=table, error="Timeout (query too slow)")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - isolate per-table failures
         logger.warning("Metric collection failed for %s: %s", table, exc)
         return TableMetric(table=table, error=str(exc))
 

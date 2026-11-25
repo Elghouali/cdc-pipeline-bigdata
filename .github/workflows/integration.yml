@@ -3,6 +3,11 @@ name: Integration Tests
 on:
   # Run on demand from the Actions tab.
   workflow_dispatch:
+    inputs:
+      live_cdc:
+        description: Verify actual Bronze/Silver CDC delivery (requires full stack)
+        type: boolean
+        default: true
   # Weekly smoke test of the full stack — Sundays at 03:00 UTC.
   schedule:
     - cron: "0 3 * * 0"
@@ -29,7 +34,7 @@ jobs:
 
       - name: Create test .env
         run: |
-          # .env.example is not committed — generate a safe CI .env inline.
+          # Generate isolated CI credentials; never use real credentials here.
           cat > .env << 'EOF'
           POSTGRES_USER=postgres
           POSTGRES_PASSWORD=ci_postgres_pass
@@ -41,6 +46,7 @@ jobs:
           SUPERSET_ADMIN_PASSWORD=ci_superset_admin
           API_SECRET_KEY=ci_api_secret_key_for_testing_only
           API_ADMIN_PASSWORD=ci_admin_pass
+          GRAFANA_ADMIN_PASSWORD=ci_grafana_pass
           SLACK_WEBHOOK_URL=https://hooks.slack.com/services/CI_PLACEHOLDER
           EOF
           echo ".env generated for CI integration run."
@@ -79,6 +85,32 @@ jobs:
 
       - name: Run Python integration tests
         run: make test-python
+
+      - name: Start Bronze and wait for its six tables
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        timeout-minutes: 6
+        run: |
+          make spark-bronze
+          timeout 300 bash -c '
+            until [ "$(docker compose exec -T trino trino --catalog iceberg --schema analytics --output-format TSV --execute "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''analytics'\'' AND table_name IN ('\''bronze_customers_cdc'\'', '\''bronze_products_cdc'\'', '\''bronze_orders_cdc'\'', '\''bronze_order_items_cdc'\'', '\''bronze_payments_cdc'\'', '\''bronze_returns_cdc'\'')" 2>/dev/null || true)" = 6 ]; do
+              sleep 10
+            done
+          '
+
+      - name: Verify actual CDC lifecycle
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        timeout-minutes: 20
+        run: |
+          make spark-silver
+          python scripts/cdc_smoke.py --timeout 180 --output artifacts/cdc-smoke.json
+
+      - name: Upload CDC evidence
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdc-smoke-evidence
+          path: artifacts/cdc-smoke.json
+          if-no-files-found: warn
 
       - name: Dump logs on failure
         if: failure()

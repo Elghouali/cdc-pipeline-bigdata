@@ -290,6 +290,17 @@ curl -s http://localhost:8083/connectors/cdc-postgres/status | python3 -m json.t
 
 ---
 
+## CDC acceptance testing
+
+The API unit tests alone do not prove source-to-lakehouse delivery. Run the [CDC lifecycle acceptance harness](docs/CDC_ACCEPTANCE.md) against an isolated local stack to verify real PostgreSQL INSERT/UPDATE/DELETE propagation into Bronze and Silver, optionally Gold, and generate measured JSON evidence.
+
+```bash
+python -m unittest discover -s tests -v
+python scripts/cdc_smoke.py --output artifacts/cdc-smoke.json
+```
+
+Live acceptance results are not yet verified for this revision. See the [GitHub Actions history](https://github.com/Elghouali/cdc-pipeline-bigdata/actions) for actual workflow outcomes.
+
 ## Development
 
 Start with hot-reload for API and frontend:

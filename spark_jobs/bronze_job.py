@@ -27,7 +27,8 @@ Run:
 """
 
 import logging
-from pyspark.sql import SparkSession, DataFrame
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
 
@@ -37,11 +38,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bronze_job")
 
-TABLES          = ["customers", "products", "orders", "order_items", "payments", "returns"]
+TABLES = ["customers", "products", "orders", "order_items", "payments", "returns"]
 KAFKA_BOOTSTRAP = "kafka:9092"
-TOPIC_PREFIX    = "cdc.public"
-CATALOG         = "iceberg"
-SCHEMA          = "analytics"
+TOPIC_PREFIX = "cdc.public"
+CATALOG = "iceberg"
+SCHEMA = "analytics"
 
 
 def get_spark() -> SparkSession:
@@ -82,26 +83,37 @@ def create_bronze_table(spark: SparkSession, table: str) -> None:
     logger.info("Bronze table ready: %s", full_name)
 
 
-def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> None:
+def parse_and_write(
+    spark: SparkSession, table: str, df: DataFrame, batch_id: int
+) -> None:
     parsed = (
-        df
-        .withColumn("raw_str",        F.col("value").cast(StringType()))
+        df.withColumn("raw_str", F.col("value").cast(StringType()))
         # schemas.enable=false: the message IS the payload directly (no wrapper).
         # Defensively try $.payload first so the job keeps working if the connector
         # is later reconfigured with schemas enabled.
-        .withColumn("payload",         F.coalesce(
-            F.get_json_object(F.col("raw_str"), "$.payload"),
-            F.col("raw_str"),
-        ))
-        .withColumn("op",              F.get_json_object(F.col("payload"), "$.op"))
-        .withColumn("before_payload",  F.get_json_object(F.col("payload"), "$.before"))
-        .withColumn("after_payload",   F.get_json_object(F.col("payload"), "$.after"))
-        .withColumn("source_db",       F.get_json_object(F.col("payload"), "$.source.db"))
-        .withColumn("source_table",    F.get_json_object(F.col("payload"), "$.source.table"))
-        .withColumn("source_ts_ms",    F.get_json_object(F.col("payload"), "$.source.ts_ms").cast("bigint"))
-        .withColumn("event_ts_ms",     F.get_json_object(F.col("payload"), "$.ts_ms").cast("bigint"))
+        .withColumn(
+            "payload",
+            F.coalesce(
+                F.get_json_object(F.col("raw_str"), "$.payload"),
+                F.col("raw_str"),
+            ),
+        )
+        .withColumn("op", F.get_json_object(F.col("payload"), "$.op"))
+        .withColumn("before_payload", F.get_json_object(F.col("payload"), "$.before"))
+        .withColumn("after_payload", F.get_json_object(F.col("payload"), "$.after"))
+        .withColumn("source_db", F.get_json_object(F.col("payload"), "$.source.db"))
+        .withColumn(
+            "source_table", F.get_json_object(F.col("payload"), "$.source.table")
+        )
+        .withColumn(
+            "source_ts_ms",
+            F.get_json_object(F.col("payload"), "$.source.ts_ms").cast("bigint"),
+        )
+        .withColumn(
+            "event_ts_ms", F.get_json_object(F.col("payload"), "$.ts_ms").cast("bigint")
+        )
         .withColumn("ingestion_timestamp", F.current_timestamp())
-        .withColumn("ingestion_date",  F.current_date())
+        .withColumn("ingestion_date", F.current_date())
         .select(
             F.col("key").cast(StringType()).alias("kafka_key"),
             F.col("offset").alias("kafka_offset"),
@@ -123,7 +135,7 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
 
     # Split valid and invalid rows in a single pass to avoid recomputing the plan.
     # Rows with op=null are Debezium heartbeats or schema-change tombstones.
-    valid   = parsed.filter(F.col("op").isNotNull())
+    valid = parsed.filter(F.col("op").isNotNull())
     invalid = parsed.filter(F.col("op").isNull())
 
     # Count invalids only — cheaper than caching the full dataset. The old
@@ -133,7 +145,9 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
     if dropped > 0:
         logger.warning(
             "Batch %d | table=%-12s | dropped %d null-op rows (heartbeats/tombstones)",
-            batch_id, table, dropped,
+            batch_id,
+            table,
+            dropped,
         )
 
     valid.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
@@ -141,12 +155,11 @@ def parse_and_write(spark: SparkSession, table: str, df: DataFrame, batch_id: in
 
 
 def start_table_stream(spark: SparkSession, table: str):
-    topic      = f"{TOPIC_PREFIX}.{table}"
+    topic = f"{TOPIC_PREFIX}.{table}"
     checkpoint = f"s3a://warehouse/checkpoints/bronze/{table}"
 
     raw = (
-        spark.readStream
-        .format("kafka")
+        spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("subscribe", topic)
         .option("startingOffsets", "earliest")
@@ -156,8 +169,9 @@ def start_table_stream(spark: SparkSession, table: str):
     )
 
     return (
-        raw.writeStream
-        .foreachBatch(lambda df, bid: parse_and_write(spark, table, df, bid))
+        raw.writeStream.foreachBatch(
+            lambda df, bid: parse_and_write(spark, table, df, bid)
+        )
         .option("checkpointLocation", checkpoint)
         .trigger(processingTime="30 seconds")
         .start()

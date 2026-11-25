@@ -1,14 +1,13 @@
 """Tests for POST /api/query (SQL validation and streaming)."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from auth import create_access_token
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-
-from auth import create_access_token
 from main import app
 from routers.query import _validate_sql
 
@@ -20,31 +19,38 @@ async def _noop_lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 # ── _validate_sql unit tests (no HTTP involved) ───────────────────────────────
 
-@pytest.mark.parametrize("sql", [
-    "SELECT 1",
-    "SELECT * FROM iceberg.analytics.gold_orders",
-    "  select id from bronze_customers_cdc  ",
-    "SELECT * FROM t WHERE status = 'CREATE_PENDING'",   # keyword inside string
-    "SELECT * FROM t WHERE note = 'UPDATE me'",           # keyword inside string
-])
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 1",
+        "SELECT * FROM iceberg.analytics.gold_orders",
+        "  select id from bronze_customers_cdc  ",
+        "SELECT * FROM t WHERE status = 'CREATE_PENDING'",  # keyword inside string
+        "SELECT * FROM t WHERE note = 'UPDATE me'",  # keyword inside string
+    ],
+)
 def test_validate_sql_allows_reads(sql: str) -> None:
     result = _validate_sql(sql)
     assert result
 
 
-@pytest.mark.parametrize("sql", [
-    "DROP TABLE iceberg.analytics.gold_orders",
-    "CREATE TABLE foo (id INT)",
-    "INSERT INTO foo VALUES (1)",
-    "UPDATE foo SET x = 1",
-    "DELETE FROM foo",
-    "ALTER TABLE foo ADD COLUMN y INT",
-    "TRUNCATE TABLE foo",
-    "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=s.x",
-    "/* comment */ DROP TABLE t",
-    "-- comment\nDROP TABLE t",
-    "CALL some_procedure()",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TABLE iceberg.analytics.gold_orders",
+        "CREATE TABLE foo (id INT)",
+        "INSERT INTO foo VALUES (1)",
+        "UPDATE foo SET x = 1",
+        "DELETE FROM foo",
+        "ALTER TABLE foo ADD COLUMN y INT",
+        "TRUNCATE TABLE foo",
+        "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=s.x",
+        "/* comment */ DROP TABLE t",
+        "-- comment\nDROP TABLE t",
+        "CALL some_procedure()",
+    ],
+)
 def test_validate_sql_blocks_mutations(sql: str) -> None:
     with pytest.raises(HTTPException) as exc:
         _validate_sql(sql)
@@ -65,6 +71,7 @@ def test_validate_sql_rejects_multiple_statements() -> None:
 
 # ── HTTP endpoint tests ───────────────────────────────────────────────────────
 
+
 class _AsyncCM:
     def __init__(self, conn: AsyncMock) -> None:
         self._conn = conn
@@ -82,7 +89,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     fake_conn = AsyncMock()
     fake_conn.fetchrow.return_value = {
-        "id": 1, "username": "admin", "role": "admin", "created_at": None
+        "id": 1,
+        "username": "admin",
+        "role": "admin",
+        "created_at": None,
     }
     pool = MagicMock()
     pool.acquire.return_value = _AsyncCM(fake_conn)

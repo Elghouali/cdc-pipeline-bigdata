@@ -49,18 +49,6 @@ jobs:
           if [ -d api ]; then TARGETS="$TARGETS api/"; fi
           ruff format --check $TARGETS
 
-      - name: Generate reviewable lint repair patch
-        if: failure()
-        run: |
-          ruff check --fix spark_jobs/ api/ || true
-          ruff format spark_jobs/ api/
-          git diff -- spark_jobs/ api/ > /tmp/ruff-repair.patch
-          echo "RUFF_PATCH_START"
-          base64 -w 0 /tmp/ruff-repair.patch
-          echo
-          echo "RUFF_PATCH_END"
-          ruff check spark_jobs/ api/
-
   # ──────────────────────────────────────────────────────────────────────────
   # Job 2: Lint shell scripts with shellcheck
   # ──────────────────────────────────────────────────────────────────────────

@@ -1,14 +1,13 @@
 """Tests for GET /api/metrics/{layer}."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from main import app
 from models import MetricsResponse, TableMetric
 
@@ -22,6 +21,7 @@ async def _noop_lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def reset_metrics_cache() -> None:
     """Flush the in-process metrics cache so tests don't share state."""
     import routers.metrics as m
+
     m._cache.clear()
     m._pending.clear()
 
@@ -38,7 +38,7 @@ def _fake_response(layer: str) -> MetricsResponse:
         layer=layer,
         tables=[TableMetric(table=f"{layer}_customers_cdc", row_count=42)],
         cached=False,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 

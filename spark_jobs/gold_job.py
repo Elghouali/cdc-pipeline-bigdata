@@ -19,7 +19,8 @@ Run:
 """
 
 import logging
-from pyspark.sql import SparkSession, DataFrame
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 logging.basicConfig(
@@ -29,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger("gold_job")
 
 CATALOG = "iceberg"
-SCHEMA  = "analytics"
+SCHEMA = "analytics"
 
 
 def get_spark() -> SparkSession:
@@ -55,7 +56,10 @@ def _ddl(table: str, body: str) -> str:
 def create_gold_tables(spark: SparkSession) -> None:
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
 
-    spark.sql(_ddl("gold_customers", """
+    spark.sql(
+        _ddl(
+            "gold_customers",
+            """
         customer_id      INT,
         name             STRING,
         city             STRING,
@@ -69,9 +73,14 @@ def create_gold_tables(spark: SparkSession) -> None:
         last_order_date  DATE,
         first_order_date DATE,
         _updated_at      TIMESTAMP
-    """))
+    """,
+        )
+    )
 
-    spark.sql(_ddl("gold_orders", """
+    spark.sql(
+        _ddl(
+            "gold_orders",
+            """
         order_id         INT,
         order_date       DATE,
         customer_id      INT,
@@ -86,9 +95,14 @@ def create_gold_tables(spark: SparkSession) -> None:
         payment_status   STRING,
         has_return       BOOLEAN,
         _updated_at      TIMESTAMP
-    """))
+    """,
+        )
+    )
 
-    spark.sql(_ddl("gold_sales_facts", """
+    spark.sql(
+        _ddl(
+            "gold_sales_facts",
+            """
         sale_date        DATE,
         channel          STRING,
         customer_segment STRING,
@@ -102,9 +116,14 @@ def create_gold_tables(spark: SparkSession) -> None:
         total_items_sold BIGINT,
         avg_order_value  DOUBLE,
         _updated_at      TIMESTAMP
-    """))
+    """,
+        )
+    )
 
-    spark.sql(_ddl("gold_payments_summary", """
+    spark.sql(
+        _ddl(
+            "gold_payments_summary",
+            """
         payment_month     STRING,
         method            STRING,
         transaction_count BIGINT,
@@ -113,73 +132,103 @@ def create_gold_tables(spark: SparkSession) -> None:
         refunded_amount   DOUBLE,
         pending_amount    DOUBLE,
         _updated_at       TIMESTAMP
-    """))
+    """,
+        )
+    )
 
-    spark.sql(_ddl("gold_returns_summary", """
+    spark.sql(
+        _ddl(
+            "gold_returns_summary",
+            """
         return_month    STRING,
         reason          STRING,
         return_status   STRING,
         return_count    BIGINT,
         return_rate_pct DOUBLE,
         _updated_at     TIMESTAMP
-    """))
+    """,
+        )
+    )
 
     logger.info("All Gold tables ready.")
 
 
 # ── Aggregation builders ──────────────────────────────────────────────────────
 
+
 def build_gold_customers(spark: SparkSession) -> DataFrame:
-    c  = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter("_is_deleted = false")
-    o  = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
-    p  = spark.table(f"{CATALOG}.{SCHEMA}.silver_payments").filter("_is_deleted = false")
+    c = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter(
+        "_is_deleted = false"
+    )
+    o = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
+    p = spark.table(f"{CATALOG}.{SCHEMA}.silver_payments").filter("_is_deleted = false")
 
     order_agg = o.groupBy("customer_id").agg(
         F.count("id").alias("total_orders"),
-        F.sum(F.when(F.col("status") == "delivered", 1).otherwise(0)).alias("delivered_orders"),
-        F.sum(F.when(F.col("status") == "cancelled", 1).otherwise(0)).alias("cancelled_orders"),
-        F.sum(F.when(F.col("status") == "returned",  1).otherwise(0)).alias("returned_orders"),
+        F.sum(F.when(F.col("status") == "delivered", 1).otherwise(0)).alias(
+            "delivered_orders"
+        ),
+        F.sum(F.when(F.col("status") == "cancelled", 1).otherwise(0)).alias(
+            "cancelled_orders"
+        ),
+        F.sum(F.when(F.col("status") == "returned", 1).otherwise(0)).alias(
+            "returned_orders"
+        ),
         F.max("order_date").alias("last_order_date"),
         F.min("order_date").alias("first_order_date"),
     )
 
     pay_agg = (
-        p.join(o.select(F.col("id").alias("oid"), "customer_id"), p.order_id == F.col("oid"))
-        .groupBy("customer_id").agg(
+        p.join(
+            o.select(F.col("id").alias("oid"), "customer_id"),
+            p.order_id == F.col("oid"),
+        )
+        .groupBy("customer_id")
+        .agg(
             F.sum("amount").alias("total_spent"),
         )
     )
 
     return (
         c.join(order_agg, c.id == order_agg.customer_id, "left")
-         .join(pay_agg,   c.id == pay_agg.customer_id,   "left")
-         .select(
-             c.id.alias("customer_id"), c.name, c.city, c.segment,
-             F.coalesce(order_agg.total_orders,     F.lit(0)).alias("total_orders"),
-             F.coalesce(order_agg.delivered_orders, F.lit(0)).alias("delivered_orders"),
-             F.coalesce(order_agg.cancelled_orders, F.lit(0)).alias("cancelled_orders"),
-             F.coalesce(order_agg.returned_orders,  F.lit(0)).alias("returned_orders"),
-             F.coalesce(pay_agg.total_spent, F.lit(0.0)).alias("total_spent"),
-             # avg_order_value = total_spent / total_orders, not AVG(payment.amount):
-             # one order can span multiple payments so AVG(amount) would be wrong.
-             F.when(
-                 order_agg.total_orders > 0,
-                 F.coalesce(pay_agg.total_spent, F.lit(0.0)) / order_agg.total_orders.cast("double"),
-             ).otherwise(0.0).alias("avg_order_value"),
-             order_agg.last_order_date,
-             order_agg.first_order_date,
-             F.current_timestamp().alias("_updated_at"),
-             F.current_date().alias("snapshot_date"),
-         )
+        .join(pay_agg, c.id == pay_agg.customer_id, "left")
+        .select(
+            c.id.alias("customer_id"),
+            c.name,
+            c.city,
+            c.segment,
+            F.coalesce(order_agg.total_orders, F.lit(0)).alias("total_orders"),
+            F.coalesce(order_agg.delivered_orders, F.lit(0)).alias("delivered_orders"),
+            F.coalesce(order_agg.cancelled_orders, F.lit(0)).alias("cancelled_orders"),
+            F.coalesce(order_agg.returned_orders, F.lit(0)).alias("returned_orders"),
+            F.coalesce(pay_agg.total_spent, F.lit(0.0)).alias("total_spent"),
+            # avg_order_value = total_spent / total_orders, not AVG(payment.amount):
+            # one order can span multiple payments so AVG(amount) would be wrong.
+            F.when(
+                order_agg.total_orders > 0,
+                F.coalesce(pay_agg.total_spent, F.lit(0.0))
+                / order_agg.total_orders.cast("double"),
+            )
+            .otherwise(0.0)
+            .alias("avg_order_value"),
+            order_agg.last_order_date,
+            order_agg.first_order_date,
+            F.current_timestamp().alias("_updated_at"),
+            F.current_date().alias("snapshot_date"),
+        )
     )
 
 
 def build_gold_orders(spark: SparkSession) -> DataFrame:
-    o  = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
-    c  = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter("_is_deleted = false")
-    oi = spark.table(f"{CATALOG}.{SCHEMA}.silver_order_items").filter("_is_deleted = false")
-    p  = spark.table(f"{CATALOG}.{SCHEMA}.silver_payments").filter("_is_deleted = false")
-    r  = spark.table(f"{CATALOG}.{SCHEMA}.silver_returns").filter("_is_deleted = false")
+    o = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
+    c = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter(
+        "_is_deleted = false"
+    )
+    oi = spark.table(f"{CATALOG}.{SCHEMA}.silver_order_items").filter(
+        "_is_deleted = false"
+    )
+    p = spark.table(f"{CATALOG}.{SCHEMA}.silver_payments").filter("_is_deleted = false")
+    r = spark.table(f"{CATALOG}.{SCHEMA}.silver_returns").filter("_is_deleted = false")
 
     items = oi.groupBy("order_id").agg(
         F.sum(F.col("quantity") * F.col("unit_price")).alias("order_total"),
@@ -187,24 +236,37 @@ def build_gold_orders(spark: SparkSession) -> DataFrame:
     )
 
     return (
-        o
-        .join(c.select(F.col("id").alias("cid"), "name", "segment", "city"),
-              o.customer_id == F.col("cid"), "left")
+        o.join(
+            c.select(F.col("id").alias("cid"), "name", "segment", "city"),
+            o.customer_id == F.col("cid"),
+            "left",
+        )
         .join(items, o.id == items.order_id, "left")
-        .join(p.select(F.col("order_id").alias("pid"),
-                       F.col("method").alias("pay_method"),
-                       F.col("status").alias("pay_status")),
-              o.id == F.col("pid"), "left")
-        .join(r.select(F.col("order_id").alias("rid")).distinct(),
-              o.id == F.col("rid"), "left")
+        .join(
+            p.select(
+                F.col("order_id").alias("pid"),
+                F.col("method").alias("pay_method"),
+                F.col("status").alias("pay_status"),
+            ),
+            o.id == F.col("pid"),
+            "left",
+        )
+        .join(
+            r.select(F.col("order_id").alias("rid")).distinct(),
+            o.id == F.col("rid"),
+            "left",
+        )
         .select(
-            o.id.alias("order_id"),   o.order_date,  o.customer_id,
+            o.id.alias("order_id"),
+            o.order_date,
+            o.customer_id,
             F.col("name").alias("customer_name"),
             F.col("segment").alias("customer_segment"),
             F.col("city").alias("customer_city"),
-            o.status, o.channel,
+            o.status,
+            o.channel,
             F.coalesce("order_total", F.lit(0.0)).alias("order_total"),
-            F.coalesce("item_count",  F.lit(0)).alias("item_count"),
+            F.coalesce("item_count", F.lit(0)).alias("item_count"),
             F.col("pay_method").alias("payment_method"),
             F.col("pay_status").alias("payment_status"),
             F.col("rid").isNotNull().alias("has_return"),
@@ -215,18 +277,39 @@ def build_gold_orders(spark: SparkSession) -> DataFrame:
 
 
 def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
-    o  = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
-    c  = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter("_is_deleted = false")
-    oi = spark.table(f"{CATALOG}.{SCHEMA}.silver_order_items").filter("_is_deleted = false")
-    pr = spark.table(f"{CATALOG}.{SCHEMA}.silver_products").filter("_is_deleted = false")
+    o = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
+    c = spark.table(f"{CATALOG}.{SCHEMA}.silver_customers").filter(
+        "_is_deleted = false"
+    )
+    oi = spark.table(f"{CATALOG}.{SCHEMA}.silver_order_items").filter(
+        "_is_deleted = false"
+    )
+    pr = spark.table(f"{CATALOG}.{SCHEMA}.silver_products").filter(
+        "_is_deleted = false"
+    )
 
     enriched = (
-        oi
-        .join(pr.select(F.col("id").alias("prid"), "category"), oi.product_id == F.col("prid"), "left")
-        .join(o.select(F.col("id").alias("oid"), "order_date", "customer_id", "status", "channel"),
-              oi.order_id == F.col("oid"), "left")
-        .join(c.select(F.col("id").alias("cid"), "segment"),
-              F.col("customer_id") == F.col("cid"), "left")
+        oi.join(
+            pr.select(F.col("id").alias("prid"), "category"),
+            oi.product_id == F.col("prid"),
+            "left",
+        )
+        .join(
+            o.select(
+                F.col("id").alias("oid"),
+                "order_date",
+                "customer_id",
+                "status",
+                "channel",
+            ),
+            oi.order_id == F.col("oid"),
+            "left",
+        )
+        .join(
+            c.select(F.col("id").alias("cid"), "segment"),
+            F.col("customer_id") == F.col("cid"),
+            "left",
+        )
     )
 
     return (
@@ -235,22 +318,36 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
             "channel",
             F.col("segment").alias("customer_segment"),
             F.col("category").alias("product_category"),
-        ).agg(
+        )
+        .agg(
             F.countDistinct(oi.order_id).alias("order_count"),
             # Count distinct order_ids per status — using SUM(WHEN) would count
             # item rows (one order with 3 items counts as 3, not 1).
-            F.countDistinct(F.when(F.col("status") == "delivered", oi.order_id)).alias("delivered_count"),
-            F.countDistinct(F.when(F.col("status") == "cancelled", oi.order_id)).alias("cancelled_count"),
-            F.countDistinct(F.when(F.col("status") == "returned",  oi.order_id)).alias("returned_count"),
+            F.countDistinct(F.when(F.col("status") == "delivered", oi.order_id)).alias(
+                "delivered_count"
+            ),
+            F.countDistinct(F.when(F.col("status") == "cancelled", oi.order_id)).alias(
+                "cancelled_count"
+            ),
+            F.countDistinct(F.when(F.col("status") == "returned", oi.order_id)).alias(
+                "returned_count"
+            ),
             F.sum(F.col("quantity") * F.col("unit_price")).alias("gross_revenue"),
-            F.sum(F.when(F.col("status").isin("delivered", "shipped"),
-                         F.col("quantity") * F.col("unit_price")).otherwise(0.0)).alias("net_revenue"),
+            F.sum(
+                F.when(
+                    F.col("status").isin("delivered", "shipped"),
+                    F.col("quantity") * F.col("unit_price"),
+                ).otherwise(0.0)
+            ).alias("net_revenue"),
             F.sum("quantity").alias("total_items_sold"),
         )
-        .withColumn("avg_order_value",
-                    F.when(F.col("order_count") > 0,
-                           F.col("gross_revenue") / F.col("order_count")).otherwise(0.0))
-        .withColumn("_updated_at",   F.current_timestamp())
+        .withColumn(
+            "avg_order_value",
+            F.when(
+                F.col("order_count") > 0, F.col("gross_revenue") / F.col("order_count")
+            ).otherwise(0.0),
+        )
+        .withColumn("_updated_at", F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
     )
 
@@ -258,17 +355,22 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
 def build_gold_payments_summary(spark: SparkSession) -> DataFrame:
     p = spark.table(f"{CATALOG}.{SCHEMA}.silver_payments").filter("_is_deleted = false")
     return (
-        p
-        .withColumn("payment_month", F.date_format("payment_date", "yyyy-MM"))
+        p.withColumn("payment_month", F.date_format("payment_date", "yyyy-MM"))
         .groupBy("payment_month", "method")
         .agg(
             F.count("id").alias("transaction_count"),
             F.sum("amount").alias("total_amount"),
-            F.sum(F.when(F.col("status") == "completed", F.col("amount")).otherwise(0.0)).alias("completed_amount"),
-            F.sum(F.when(F.col("status") == "refunded",  F.col("amount")).otherwise(0.0)).alias("refunded_amount"),
-            F.sum(F.when(F.col("status") == "pending",   F.col("amount")).otherwise(0.0)).alias("pending_amount"),
+            F.sum(
+                F.when(F.col("status") == "completed", F.col("amount")).otherwise(0.0)
+            ).alias("completed_amount"),
+            F.sum(
+                F.when(F.col("status") == "refunded", F.col("amount")).otherwise(0.0)
+            ).alias("refunded_amount"),
+            F.sum(
+                F.when(F.col("status") == "pending", F.col("amount")).otherwise(0.0)
+            ).alias("pending_amount"),
         )
-        .withColumn("_updated_at",   F.current_timestamp())
+        .withColumn("_updated_at", F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
     )
 
@@ -289,31 +391,44 @@ def build_gold_returns_summary(spark: SparkSession) -> DataFrame:
     )
 
     returns_agg = (
-        r
-        .withColumn("return_month", F.date_format("return_date", "yyyy-MM"))
+        r.withColumn("return_month", F.date_format("return_date", "yyyy-MM"))
         .groupBy("return_month", "reason", F.col("status").alias("return_status"))
         .agg(F.count("id").alias("return_count"))
     )
 
     return (
-        returns_agg
-        .join(monthly_delivered,
-              returns_agg.return_month == monthly_delivered.order_month, "left")
-        .withColumn("return_rate_pct",
-                    F.when(
-                        F.col("delivered_count").isNotNull() & (F.col("delivered_count") > 0),
-                        F.col("return_count") / F.col("delivered_count") * 100.0,
-                    ).otherwise(0.0))
-        .withColumn("_updated_at",   F.current_timestamp())
+        returns_agg.join(
+            monthly_delivered,
+            returns_agg.return_month == monthly_delivered.order_month,
+            "left",
+        )
+        .withColumn(
+            "return_rate_pct",
+            F.when(
+                F.col("delivered_count").isNotNull() & (F.col("delivered_count") > 0),
+                F.col("return_count") / F.col("delivered_count") * 100.0,
+            ).otherwise(0.0),
+        )
+        .withColumn("_updated_at", F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
-        .select("return_month", "reason", "return_status", "return_count",
-                "return_rate_pct", "_updated_at", "snapshot_date")
+        .select(
+            "return_month",
+            "reason",
+            "return_status",
+            "return_count",
+            "return_rate_pct",
+            "_updated_at",
+            "snapshot_date",
+        )
     )
 
 
 # ── Write helpers ─────────────────────────────────────────────────────────────
 
-def refresh_gold_table(spark: SparkSession, name: str, df: DataFrame, batch_id: int) -> None:
+
+def refresh_gold_table(
+    spark: SparkSession, name: str, df: DataFrame, batch_id: int
+) -> None:
     df.writeTo(f"{CATALOG}.{SCHEMA}.{name}").overwritePartitions()
     logger.info("Batch %d | %-28s | refreshed", batch_id, name)
 
@@ -321,11 +436,19 @@ def refresh_gold_table(spark: SparkSession, name: str, df: DataFrame, batch_id: 
 def run_gold_refresh(spark: SparkSession, _df: DataFrame, batch_id: int) -> None:
     logger.info("Gold refresh triggered — batch %d", batch_id)
     try:
-        refresh_gold_table(spark, "gold_customers",        build_gold_customers(spark),        batch_id)
-        refresh_gold_table(spark, "gold_orders",           build_gold_orders(spark),           batch_id)
-        refresh_gold_table(spark, "gold_sales_facts",      build_gold_sales_facts(spark),      batch_id)
-        refresh_gold_table(spark, "gold_payments_summary", build_gold_payments_summary(spark), batch_id)
-        refresh_gold_table(spark, "gold_returns_summary",  build_gold_returns_summary(spark),  batch_id)
+        refresh_gold_table(
+            spark, "gold_customers", build_gold_customers(spark), batch_id
+        )
+        refresh_gold_table(spark, "gold_orders", build_gold_orders(spark), batch_id)
+        refresh_gold_table(
+            spark, "gold_sales_facts", build_gold_sales_facts(spark), batch_id
+        )
+        refresh_gold_table(
+            spark, "gold_payments_summary", build_gold_payments_summary(spark), batch_id
+        )
+        refresh_gold_table(
+            spark, "gold_returns_summary", build_gold_returns_summary(spark), batch_id
+        )
     except Exception as exc:
         logger.exception("Gold refresh batch %d error: %s", batch_id, exc)
         # Re-raise so Spark marks the batch as failed rather than silently
@@ -341,15 +464,15 @@ def main() -> None:
 
     # Heartbeat stream: silver_orders drives the 5-min trigger cycle
     heartbeat = (
-        spark.readStream
-        .format("iceberg")
+        spark.readStream.format("iceberg")
         .option("stream-from-timestamp", "0")
         .load(f"{CATALOG}.{SCHEMA}.silver_orders")
     )
 
     query = (
-        heartbeat.writeStream
-        .foreachBatch(lambda df, bid: run_gold_refresh(spark, df, bid))
+        heartbeat.writeStream.foreachBatch(
+            lambda df, bid: run_gold_refresh(spark, df, bid)
+        )
         .option("checkpointLocation", "s3a://warehouse/checkpoints/gold/main")
         .trigger(processingTime="5 minutes")
         .start()

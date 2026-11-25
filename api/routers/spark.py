@@ -29,12 +29,12 @@ async def _get_json(url: str, service: str) -> Any:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"{service} returned HTTP {exc.response.status_code}.",
-        )
+        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"{service} is unreachable: {exc}",
-        )
+        ) from exc
 
 
 def _summarize_application(app: dict[str, Any]) -> dict[str, Any]:

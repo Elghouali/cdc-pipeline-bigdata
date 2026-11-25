@@ -8,7 +8,8 @@ api/routers/metrics.py, api/routers/query.py.
 import asyncio
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -44,12 +45,12 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise TrinoError(f"HTTP connection error: {exc}")
+            raise TrinoError(f"HTTP connection error: {exc}") from exc
 
         try:
             body: dict[str, Any] = response.json()
         except json.JSONDecodeError as exc:
-            raise TrinoError(f"Invalid JSON in Trino response: {exc}")
+            raise TrinoError(f"Invalid JSON in Trino response: {exc}") from exc
 
         columns: list[str] | None = None
 
@@ -65,7 +66,7 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
             for row in body.get("data", []) or []:
                 if columns is None:
                     continue
-                yield dict(zip(columns, row))
+                yield dict(zip(columns, row, strict=True))
 
             next_uri: str | None = body.get("nextUri")
             if not next_uri:
@@ -76,12 +77,12 @@ async def stream_query(sql: str) -> AsyncIterator[dict[str, Any]]:
                 poll = await client.get(next_uri, headers=_headers())
                 poll.raise_for_status()
             except httpx.HTTPError as exc:
-                raise TrinoError(f"HTTP polling error: {exc}")
-            
+                raise TrinoError(f"HTTP polling error: {exc}") from exc
+
             try:
                 body = poll.json()
             except json.JSONDecodeError as exc:
-                raise TrinoError(f"Invalid JSON in Trino poll response: {exc}")
+                raise TrinoError(f"Invalid JSON in Trino poll response: {exc}") from exc
 
 
 async def fetch_all(sql: str) -> list[dict[str, Any]]:

@@ -180,28 +180,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install detect-secrets
-        run: pip install detect-secrets
+        run: pip install detect-secrets==1.5.0
 
-      - name: Scan for secrets
+      - name: Scan and enforce audited baseline
         run: |
-          if [ -f .secrets.baseline ]; then
-            echo "Scanning against existing baseline..."
-            detect-secrets scan --baseline .secrets.baseline
-          else
-            echo "No baseline found — generating one."
-            detect-secrets scan > .secrets.baseline
-          fi
+          test -f .secrets.baseline
+          detect-secrets scan --baseline .secrets.baseline
+          python - <<'PY'
+          import json
+          from pathlib import Path
 
-      - name: Audit baseline for unaudited secrets
-        run: |
-          UNAUDITED=$(detect-secrets audit .secrets.baseline --json \
-            | python3 -c "import sys, json; d=json.load(sys.stdin); print(len([r for rs in d.get('results', {}).values() for r in rs if r.get('is_secret') is None]))")
-          echo "Unaudited potential secrets: $UNAUDITED"
-          if [ "$UNAUDITED" -gt 0 ]; then
-            echo "::error::Unaudited secrets found in baseline. Run 'detect-secrets audit .secrets.baseline'."
-            exit 1
-          fi
+          baseline = json.loads(Path(".secrets.baseline").read_text(encoding="utf-8"))
+          if not isinstance(baseline.get("results"), dict):
+              raise SystemExit("Invalid baseline: missing results mapping")
+          unsafe = [
+              (path, entry.get("line_number"))
+              for path, entries in baseline["results"].items()
+              for entry in entries
+              if entry.get("is_secret") is not False
+          ]
+          for path, line in unsafe:
+              print(f"Unreviewed or confirmed secret finding: {path}:{line}")
+          if unsafe:
+              raise SystemExit("Secret findings must be reviewed; rotate real credentials.")
+          print("No unreviewed or confirmed secret findings.")
+          PY
 
   # ──────────────────────────────────────────────────────────────────────────
   # Job 7: Build & push Docker images (push to main only)

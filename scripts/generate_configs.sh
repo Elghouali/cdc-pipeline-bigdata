@@ -22,6 +22,7 @@ export SUPERSET_SECRET_KEY="${SUPERSET_SECRET_KEY:-change_me_in_production}"
 
 # Explicit variable list prevents envsubst from substituting unrelated shell
 # variables (e.g. ${PATH}, ${HOME}) that might appear in future templates.
+# shellcheck disable=SC2016 # envsubst needs literal variable names, not their values.
 ENVSUBST_VARS='$MINIO_ROOT_USER $MINIO_ROOT_PASSWORD $MARIADB_HIVE_PASSWORD $MARIADB_ROOT_PASSWORD $SUPERSET_SECRET_KEY'
 
 generate() {

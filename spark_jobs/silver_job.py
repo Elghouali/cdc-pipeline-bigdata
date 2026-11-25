@@ -2,8 +2,8 @@
 silver_job.py — Medallion Layer: Silver
 
 Reads Bronze Iceberg tables as a streaming source, parses the Debezium
-op field and before/after JSON payloads, deduplicates by (pk, source_ts_ms)
-within each micro-batch, then upserts into Silver tables via Iceberg MERGE INTO.
+op field and before/after JSON payloads, deduplicates by Kafka offset within each key's fixed topic partition,
+then applies only newer offsets via Iceberg MERGE INTO.
 
 Silver tables produced (all in iceberg.analytics.*):
   silver_customers   — id, name, email, city, segment, signup_date
@@ -16,6 +16,8 @@ Silver tables produced (all in iceberg.analytics.*):
 Metadata columns appended to every Silver table:
   _op           STRING   - last CDC operation
   _source_ts_ms BIGINT   - WAL event timestamp (ms)
+  _kafka_partition INT  - fixed partition for the primary key
+  _kafka_offset BIGINT   - last applied Kafka offset (including deletes)
   _updated_at   TIMESTAMP
   _is_deleted   BOOLEAN
   updated_date  DATE     - partition column
@@ -94,6 +96,8 @@ SILVER_DEF = {
 META_COLS = [
     ("_op",           "STRING"),
     ("_source_ts_ms", "BIGINT"),
+    ("_kafka_partition", "INT"),
+    ("_kafka_offset", "BIGINT"),
     ("_updated_at",   "TIMESTAMP"),
     ("_is_deleted",   "BOOLEAN"),
 ]
@@ -122,6 +126,14 @@ def create_silver_tables(spark: SparkSession) -> None:
                 'write.merge.mode'                = 'merge-on-read'
             )
         """)
+        # CREATE IF NOT EXISTS does not migrate an existing Iceberg schema.
+        # Do not silently accept rows without trustworthy Kafka ordering metadata.
+        columns = set(spark.table(f"{CATALOG}.{SCHEMA}.silver_{table}").columns)
+        if not {"_kafka_partition", "_kafka_offset"} <= columns:
+            raise RuntimeError(
+                f"silver_{table} requires an explicit rebuild or migration; "
+                "see docs/SILVER_ORDERING.md"
+            )
         logger.info("Silver table ready: silver_%s", table)
 
 
@@ -160,6 +172,8 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
         df
         .withColumn("_op",           F.col("op"))
         .withColumn("_source_ts_ms", F.col("source_ts_ms").cast("long"))
+        .withColumn("_kafka_partition", F.col("kafka_partition").cast("int"))
+        .withColumn("_kafka_offset", F.col("kafka_offset").cast("long"))
         .withColumn("_updated_at",   F.current_timestamp())
         .withColumn("_is_deleted",   F.col("op") == "d")
         .withColumn("updated_date",  F.current_date())
@@ -169,51 +183,84 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
 
 
 def dedup(df: DataFrame, pk: str) -> DataFrame:
-    """Within a micro-batch keep only the latest event per primary key."""
-    w = Window.partitionBy(pk).orderBy(F.col("_source_ts_ms").desc())
+    """Keep the highest offset per PK; reject missing or ambiguous partition metadata."""
+    invalid = df.filter(
+        F.col("_kafka_partition").isNull()
+        | F.col("_kafka_offset").isNull()
+        | (F.col("_kafka_partition") < 0)
+        | (F.col("_kafka_offset") < 0)
+    )
+    if not invalid.isEmpty():
+        raise ValueError("CDC event is missing valid Kafka partition/offset")
+    multiple = (
+        df.groupBy(pk)
+        .agg(F.countDistinct("_kafka_partition").alias("partitions"))
+        .filter(F.col("partitions") > 1)
+    )
+    if not multiple.isEmpty():
+        raise ValueError("CDC key moved between Kafka partitions; rebuild or reconcile")
+    w = Window.partitionBy(pk).orderBy(F.col("_kafka_offset").desc())
     return (
-        df
-        .withColumn("_rn", F.row_number().over(w))
+        df.withColumn("_rn", F.row_number().over(w))
         .filter(F.col("_rn") == 1)
         .drop("_rn")
     )
+
+
+def merge_statement(table: str, view: str) -> str:
+    """Generate the guarded merge. Unknown deletes retain a tombstone watermark."""
+    defn = SILVER_DEF[table]
+    pk = defn["pk"]
+    silver = f"{CATALOG}.{SCHEMA}.silver_{table}"
+    all_cols = [c for c, _ in defn["cols"]] + [m for m, _ in META_COLS] + ["updated_date"]
+    non_pk = [c for c in all_cols if c != pk]
+    set_sql = ", ".join(f"t.{c} = s.{c}" for c in non_pk)
+    ins_cols = ", ".join(all_cols)
+    ins_vals = ", ".join(f"s.{c}" for c in all_cols)
+
+    # CASE fails closed if a key's partition changes or a legacy row has no
+    # watermark. Offset comparisons are meaningful only within one partition.
+    newer = """CASE
+        WHEN t._kafka_partition IS NULL OR t._kafka_offset IS NULL
+          OR t._kafka_partition <> s._kafka_partition
+        THEN CAST(raise_error('Invalid CDC partition or missing target watermark') AS BOOLEAN)
+        ELSE s._kafka_offset > t._kafka_offset
+        END"""
+    return f"""
+        MERGE INTO {silver} t
+        USING global_temp.{view} s
+        ON t.{pk} = s.{pk}
+        WHEN MATCHED AND ({newer}) AND s._is_deleted = true THEN
+            UPDATE SET t._is_deleted = true,
+                       t._op = 'd',
+                       t._source_ts_ms = s._source_ts_ms,
+                       t._kafka_partition = s._kafka_partition,
+                       t._kafka_offset = s._kafka_offset,
+                       t._updated_at = s._updated_at,
+                       t.updated_date = s.updated_date
+        WHEN MATCHED AND ({newer}) THEN
+            UPDATE SET {set_sql}
+        WHEN NOT MATCHED THEN
+            INSERT ({ins_cols}) VALUES ({ins_vals})
+    """
 
 
 def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> None:
     if df.isEmpty():
         return
 
-    defn   = SILVER_DEF[table]
-    pk     = defn["pk"]
-    silver = f"{CATALOG}.{SCHEMA}.silver_{table}"
-    view   = f"_silver_src_{table}_{batch_id}"
-
-    parsed  = extract_columns(df, table)
+    defn = SILVER_DEF[table]
+    pk = defn["pk"]
+    view = f"_silver_src_{table}_{batch_id}"
+    parsed = extract_columns(df, table)
     deduped = dedup(parsed, pk)
-
     all_cols = [c for c, _ in defn["cols"]] + [m for m, _ in META_COLS] + ["updated_date"]
-    # Use global_temp so the view is resolvable when defaultCatalog=iceberg.
     deduped.select(all_cols).createOrReplaceGlobalTempView(view)
 
-    non_pk   = [c for c in all_cols if c != pk]
-    set_sql  = ", ".join(f"t.{c} = s.{c}" for c in non_pk)
-    ins_cols = ", ".join(all_cols)
-    ins_vals = ", ".join(f"s.{c}" for c in all_cols)
-
-    spark.sql(f"""
-        MERGE INTO {silver} t
-        USING global_temp.{view} s
-        ON    t.{pk} = s.{pk}
-        WHEN MATCHED AND s._is_deleted = true THEN
-            UPDATE SET t._is_deleted = true,
-                       t._op = 'd',
-                       t._updated_at = s._updated_at,
-                       t.updated_date = s.updated_date
-        WHEN MATCHED THEN
-            UPDATE SET {set_sql}
-        WHEN NOT MATCHED AND s._is_deleted = false THEN
-            INSERT ({ins_cols}) VALUES ({ins_vals})
-    """)
+    try:
+        spark.sql(merge_statement(table, view))
+    finally:
+        spark.catalog.dropGlobalTempView(view)
     logger.info("Batch %d | silver_%-12s | upserted", batch_id, table)
 
 

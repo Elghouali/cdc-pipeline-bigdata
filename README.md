@@ -290,6 +290,10 @@ curl -s http://localhost:8083/connectors/cdc-postgres/status | python3 -m json.t
 
 ---
 
+## Silver ordering and replay safety
+
+Silver uses Kafka partition/offset watermarks to reject stale updates and retain delete tombstones. This changes the Silver schema: see [ordering assumptions and migration instructions](docs/SILVER_ORDERING.md) before restarting an existing deployment. Live Iceberg replay validation remains pending.
+
 ## CDC acceptance testing
 
 The API unit tests alone do not prove source-to-lakehouse delivery. Run the [CDC lifecycle acceptance harness](docs/CDC_ACCEPTANCE.md) against an isolated local stack to verify real PostgreSQL INSERT/UPDATE/DELETE propagation into Bronze and Silver, optionally Gold, and generate measured JSON evidence.

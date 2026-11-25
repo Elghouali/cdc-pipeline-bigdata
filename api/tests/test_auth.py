@@ -1,15 +1,14 @@
 """Tests for POST /auth/login, POST /auth/logout, GET /auth/me."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from auth import create_access_token
 from db import hash_password
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from main import app
 
 
@@ -20,6 +19,7 @@ async def _noop_lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 class _AsyncCM:
     """Async context manager that yields a pre-built fake connection."""
+
     def __init__(self, conn: AsyncMock) -> None:
         self._conn = conn
 
@@ -32,7 +32,6 @@ class _AsyncCM:
 
 class _FakeRecord(dict):
     """Minimal asyncpg Record stand-in that supports item access."""
-    pass
 
 
 def _make_user_record(
@@ -72,7 +71,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def test_login_success(client: TestClient) -> None:
-    resp = client.post("/auth/login", json={"username": "admin", "password": "adminpass"})
+    resp = client.post(
+        "/auth/login", json={"username": "admin", "password": "adminpass"}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["token_type"] == "bearer"
@@ -83,7 +84,9 @@ def test_login_success(client: TestClient) -> None:
 
 def test_login_wrong_password(client: TestClient) -> None:
     client._fake_conn.fetchrow.return_value = _make_user_record(password="realpass")
-    resp = client.post("/auth/login", json={"username": "admin", "password": "wrongpass"})
+    resp = client.post(
+        "/auth/login", json={"username": "admin", "password": "wrongpass"}
+    )
     assert resp.status_code == 401
 
 

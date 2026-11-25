@@ -1,15 +1,14 @@
 """Tests for GET /api/alerts and PATCH /api/alerts/{id}/ack."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import AsyncIterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from auth import create_access_token
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from auth import create_access_token
 from main import app
 
 
@@ -46,8 +45,8 @@ def _alert_row(alert_id: int = 1, acked: bool = False) -> dict:
         "title": "Test alert",
         "severity": "HIGH",
         "details": None,
-        "fired_at": datetime.now(timezone.utc),
-        "acknowledged_at": datetime.now(timezone.utc) if acked else None,
+        "fired_at": datetime.now(UTC),
+        "acknowledged_at": datetime.now(UTC) if acked else None,
         "acknowledged_by": "admin" if acked else None,
     }
 
@@ -58,7 +57,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     fake_conn = AsyncMock()
     fake_conn.fetchrow.return_value = {
-        "id": 1, "username": "admin", "role": "admin", "created_at": None
+        "id": 1,
+        "username": "admin",
+        "role": "admin",
+        "created_at": None,
     }
     pool = _make_pool(fake_conn)
 

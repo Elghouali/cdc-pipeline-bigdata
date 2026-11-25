@@ -11,13 +11,13 @@ not coordinate across workers. For a shared cache, replace _cache with Redis.
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
-
-from config import ICEBERG_CATALOG, ICEBERG_SCHEMA, LAYER_PREFIXES
 from models import MetricsResponse, TableMetric
 from trino_client import TrinoError, fetch_all
+
+from config import ICEBERG_CATALOG, ICEBERG_SCHEMA, LAYER_PREFIXES
 
 logger = logging.getLogger("cdc-api.metrics")
 
@@ -55,7 +55,7 @@ async def _metric_for_table(table: str) -> TableMetric:
         query = (
             f"SELECT summary['total-records'] AS row_count, "
             f"CAST(committed_at AS VARCHAR) AS partition_ts "
-            f"FROM {ICEBERG_CATALOG}.{ICEBERG_SCHEMA}.\"{table}$snapshots\" "
+            f'FROM {ICEBERG_CATALOG}.{ICEBERG_SCHEMA}."{table}$snapshots" '
             "ORDER BY committed_at DESC LIMIT 1"
         )
         rows = await fetch_all(query)
@@ -81,7 +81,7 @@ async def _metric_for_table(table: str) -> TableMetric:
 async def _metric_for_table_safe(table: str) -> TableMetric:
     try:
         return await asyncio.wait_for(_metric_for_table(table), timeout=25.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Timeout collecting metrics for %s", table)
         return TableMetric(table=table, error="Timeout (query too slow)")
     except Exception as exc:  # noqa: BLE001 - isolate per-table failures
@@ -96,16 +96,16 @@ async def _compute_metrics(layer: str) -> MetricsResponse:
             _list_tables(LAYER_PREFIXES[layer]),
             timeout=5.0,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Trino query timed out after 5 seconds",
-        )
+        ) from None
     except TrinoError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Trino query failed: {exc}",
-        )
+        ) from exc
 
     metrics_results = await asyncio.gather(*(_metric_for_table_safe(t) for t in tables))
 
@@ -113,7 +113,7 @@ async def _compute_metrics(layer: str) -> MetricsResponse:
         layer=layer,  # type: ignore[arg-type]
         tables=list(metrics_results),
         cached=False,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -137,7 +137,9 @@ async def layer_metrics(layer: str) -> MetricsResponse:
             future = _pending[layer]
         else:
             # We are the first; register a future so subsequent requests wait.
-            future: asyncio.Future[MetricsResponse] = asyncio.get_running_loop().create_future()
+            future: asyncio.Future[MetricsResponse] = (
+                asyncio.get_running_loop().create_future()
+            )
             _pending[layer] = future
             future = None  # signal that we must compute
 

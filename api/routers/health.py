@@ -10,9 +10,9 @@ import time
 import asyncpg
 import httpx
 from fastapi import APIRouter
+from models import HealthItem
 
 from config import settings
-from models import HealthItem
 
 logger = logging.getLogger("cdc-api.health")
 
@@ -67,7 +67,7 @@ async def _check_postgres() -> HealthItem:
         return HealthItem(
             service="postgres", status="up", latency_ms=_elapsed_ms(start)
         )
-    except (asyncpg.PostgresError, OSError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, asyncpg.PostgresError, OSError) as exc:
         return HealthItem(
             service="postgres",
             status="down",
@@ -81,9 +81,7 @@ async def health() -> list[HealthItem]:
     """Return up/down status and latency for every internal service."""
     results = await asyncio.gather(
         _check_http("trino", f"{settings.trino_url}/v1/status", {200}),
-        _check_http(
-            "kafka-connect", f"{settings.kafka_connect_url}/connectors", {200}
-        ),
+        _check_http("kafka-connect", f"{settings.kafka_connect_url}/connectors", {200}),
         _check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302}),
         _check_http("minio", _MINIO_HEALTH_URL, {200}),
         _check_postgres(),

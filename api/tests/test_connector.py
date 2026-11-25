@@ -1,15 +1,14 @@
 """Tests for GET /api/connector/status and POST /api/connector/restart."""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from auth import create_access_token
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from auth import create_access_token
 from main import app
 
 

@@ -6,12 +6,11 @@ Caller: api/main.py. Endpoint: POST /api/query (authentication required).
 import json
 import logging
 import re
-from typing import AsyncIterator
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from collections.abc import AsyncIterator
 
 from auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from models import QueryRequest, User
 from trino_client import TrinoError, stream_query
 
@@ -83,7 +82,7 @@ async def _ndjson_stream(sql: str) -> AsyncIterator[bytes]:
             yield (json.dumps(row, default=str) + "\n").encode("utf-8")
     except TrinoError as exc:
         yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
-    except Exception as exc:  # noqa: BLE001 - surface as a stream-level error line
+    except Exception as exc:
         logger.exception("Unexpected error while streaming query results.")
         yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
 

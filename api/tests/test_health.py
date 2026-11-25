@@ -4,14 +4,13 @@ Verifies the app imports cleanly and the health endpoint responds 200
 without requiring live Postgres/Trino/Kafka backends (externals are stubbed).
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import pytest
+import routers.health as health_module
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-
-import routers.health as health_module
 from main import app
 from models import HealthItem
 from routers.query import _validate_sql

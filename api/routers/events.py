@@ -9,7 +9,8 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import KafkaError
@@ -27,7 +28,7 @@ _HEARTBEAT_SECONDS = 15.0
 
 def _sse(event: str, data: dict[str, Any]) -> bytes:
     """Format a dict as an SSE frame."""
-    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n".encode("utf-8")
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n".encode()
 
 
 def _decode_envelope(raw: bytes | None) -> dict[str, Any] | None:

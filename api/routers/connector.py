@@ -8,11 +8,11 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from auth import require_admin
-from config import settings
+from fastapi import APIRouter, Depends, HTTPException, status
 from models import User
+
+from config import settings
 
 logger = logging.getLogger("cdc-api.connector")
 
@@ -36,7 +36,7 @@ async def connector_status() -> dict[str, Any]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Kafka Connect is unreachable: {exc}",
-        )
+        ) from exc
 
     if resp.status_code == 404:
         raise HTTPException(
@@ -65,7 +65,7 @@ async def connector_restart(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Kafka Connect is unreachable: {exc}",
-        )
+        ) from exc
 
     if resp.status_code == 404:
         raise HTTPException(
@@ -78,6 +78,4 @@ async def connector_restart(
             detail=f"Kafka Connect returned HTTP {resp.status_code}.",
         )
     logger.info("Connector '%s' restart requested.", settings.connector_name)
-    return {
-        "detail": f"Restart requested for connector '{settings.connector_name}'."
-    }
+    return {"detail": f"Restart requested for connector '{settings.connector_name}'."}

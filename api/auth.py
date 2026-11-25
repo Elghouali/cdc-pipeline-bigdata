@@ -5,16 +5,16 @@ Tokens are signed with PyJWT using the algorithm from config (HS256).
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
+from db import get_pool
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from models import User
 
 from config import settings
-from db import get_pool
-from models import User
 
 logger = logging.getLogger("cdc-api.auth")
 
@@ -25,7 +25,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 def create_access_token(*, username: str, role: str, user_id: int) -> tuple[str, int]:
     """Create a signed JWT. Returns (token, expires_in_seconds)."""
     expires_in = settings.access_token_expire_minutes * 60
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": username,
         "role": role,
@@ -48,13 +48,13 @@ def decode_token(token: str) -> dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token.",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
 
 
 async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> User:

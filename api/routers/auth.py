@@ -6,10 +6,9 @@ GET /auth/me.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from auth import create_access_token, get_current_user
 from db import get_pool, verify_password
+from fastapi import APIRouter, Depends, HTTPException, status
 from models import LoginRequest, Token, User
 
 logger = logging.getLogger("cdc-api.auth-router")

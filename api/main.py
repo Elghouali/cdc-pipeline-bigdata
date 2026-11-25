@@ -5,16 +5,16 @@ Wires CORS, the database lifespan, and all feature routers.
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
+from db import connect, disconnect, init_schema
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from routers import alerts, auth, connector, events, health, metrics, query, spark
 
 from config import settings
-from db import connect, disconnect, init_schema
-from routers import alerts, auth, connector, events, health, metrics, query, spark
 
 logging.basicConfig(
     level=logging.INFO,

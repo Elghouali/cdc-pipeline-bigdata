@@ -6,10 +6,9 @@ PATCH /api/alerts/{id}/ack (authentication required).
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
 from auth import get_current_user
 from db import get_pool
+from fastapi import APIRouter, Depends, HTTPException, status
 from models import Alert, AlertAck, User
 
 logger = logging.getLogger("cdc-api.alerts")

@@ -84,6 +84,21 @@ spec:
       restartPolicy: Never
       automountServiceAccountToken: false
       initContainers:
+        - name: provision-cdc-topics
+          image: {{ .Values.kafka.image | quote }}
+          command: ["/bin/bash", "-ec"]
+          args:
+            - |
+              until kafka-broker-api-versions --bootstrap-server cdc-kafka:9092 >/dev/null 2>&1; do sleep 3; done
+              {{- range $table := splitList "," (index $cfg "table.include.list") }}
+              kafka-topics --bootstrap-server cdc-kafka:9092 --create --if-not-exists --topic {{ printf "%s.%s" (index $cfg "topic.prefix") $table | quote }} --partitions 1 --replication-factor 1
+              # An existing topic must have exactly one partition with a leader.
+              # Never resize an existing topic: it would invalidate key ordering.
+              kafka-topics --bootstrap-server cdc-kafka:9092 --describe --topic {{ printf "%s.%s" (index $cfg "topic.prefix") $table | quote }} | awk '/PartitionCount:/ {count=($0 ~ /PartitionCount:[[:space:]]+1([[:space:]]|$)/)} /Partition:[[:space:]]+0[[:space:]]/ {leader=($0 ~ /Leader:[[:space:]]+1([[:space:]]|$)/)} END {exit !(count && leader)}'
+              {{- end }}
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {cpu: "1", memory: "768Mi"}
         - name: configure-replication-role
           image: {{ .Values.postgres.image | quote }}
           command: ["sh", "-ec"]

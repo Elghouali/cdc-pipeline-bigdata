@@ -1,0 +1,35 @@
+# ONLY for disposable GitHub Actions kind clusters with four vCPUs.
+# Keep production/default resource settings unchanged. CPU limits and memory
+# limits are unchanged; lower requests allow the full test stack to schedule.
+postgres:
+  resources:
+    requests:
+      cpu: "100m"
+kafka:
+  resources:
+    requests:
+      cpu: "200m"
+connect:
+  resources:
+    requests:
+      cpu: "100m"
+minio:
+  resources:
+    requests:
+      cpu: "100m"
+mariadb:
+  resources:
+    requests:
+      cpu: "100m"
+hive:
+  resources:
+    requests:
+      cpu: "100m"
+trino:
+  resources:
+    requests:
+      cpu: "200m"
+streaming:
+  resources:
+    requests:
+      cpu: "200m"

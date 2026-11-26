@@ -12,6 +12,7 @@ on:
       - 'spark/Dockerfile'
       - 'config/debezium-connector.json'
       - 'scripts/kubernetes_cdc_smoke.py'
+      - 'scripts/kubernetes_stage_ready.py'
       - 'scripts/kubernetes_diagnostics.py'
       - 'scripts/cdc_smoke.py'
       - 'hive/Dockerfile'
@@ -26,6 +27,7 @@ on:
       - 'spark/Dockerfile'
       - 'config/debezium-connector.json'
       - 'scripts/kubernetes_cdc_smoke.py'
+      - 'scripts/kubernetes_stage_ready.py'
       - 'scripts/kubernetes_diagnostics.py'
       - 'scripts/cdc_smoke.py'
       - '.github/workflows/kubernetes-smoke.yml'
@@ -54,7 +56,7 @@ jobs:
           echo "::add-mask::$root"
           replication=$(openssl rand -hex 24)
           echo "::add-mask::$replication"
-          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
+          args=(--namespace cdc-pipeline -f helm/cdc-pipeline/values-ci.yaml --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
           kubectl create namespace cdc-pipeline
           helm template cdc helm/cdc-pipeline "${args[@]}" > /tmp/cdc-full.yaml
           kubectl -n cdc-pipeline apply --dry-run=server -f /tmp/cdc-full.yaml
@@ -110,7 +112,7 @@ jobs:
           echo "::add-mask::$root"
           replication=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.DEBEZIUM_PASSWORD}' | base64 -d)
           echo "::add-mask::$replication"
-          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
+          args=(--namespace cdc-pipeline -f helm/cdc-pipeline/values-ci.yaml --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
           helm template cdc helm/cdc-pipeline "${args[@]}" --show-only templates/minio.yaml --show-only templates/mariadb.yaml | kubectl -n cdc-pipeline apply -f -
           kubectl -n cdc-pipeline rollout status deployment/cdc-minio --timeout=300s
           kubectl -n cdc-pipeline wait --for=condition=complete job/cdc-minio-init --timeout=300s
@@ -146,12 +148,16 @@ jobs:
           root=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.MARIADB_ROOT_PASSWORD}' | base64 -d)
           replication=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.DEBEZIUM_PASSWORD}' | base64 -d)
           for secret in "$value" "$root" "$replication"; do echo "::add-mask::$secret"; done
-          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
+          args=(--namespace cdc-pipeline -f helm/cdc-pipeline/values-ci.yaml --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
           # A synthetic initial customer ensures Gold's initial snapshot is nonempty.
           kubectl -n cdc-pipeline exec deployment/cdc-postgres -- sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "$1"' sh "INSERT INTO customers(name,email,city,segment) VALUES ('Initial fixture','initial-fixture@example.invalid','Rabat','B2C');"
           helm template cdc helm/cdc-pipeline "${args[@]}" --show-only templates/connect.yaml | kubectl -n cdc-pipeline apply -f -
           kubectl -n cdc-pipeline rollout status deployment/cdc-kafka-connect --timeout=300s
           kubectl -n cdc-pipeline wait --for=condition=complete job/cdc-connector-register --timeout=420s
+          kubectl -n cdc-pipeline logs job/cdc-connector-register -c provision-cdc-topics
+          for table in customers products orders order_items payments returns; do
+            kubectl -n cdc-pipeline exec cdc-kafka-0 -- kafka-topics --bootstrap-server cdc-kafka:9092 --describe --topic "cdc.public.$table"
+          done
           kubectl -n cdc-pipeline port-forward svc/cdc-kafka-connect 18083:8083 >/tmp/connect-forward.log 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true' EXIT
@@ -173,24 +179,15 @@ jobs:
           root=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.MARIADB_ROOT_PASSWORD}' | base64 -d)
           replication=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.DEBEZIUM_PASSWORD}' | base64 -d)
           for secret in "$value" "$root" "$replication"; do echo "::add-mask::$secret"; done
-          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
+          args=(--namespace cdc-pipeline -f helm/cdc-pipeline/values-ci.yaml --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-file connect.config=config/debezium-connector.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root,connect.enabled=true,connect.password=$replication,streaming.enabled=true")
           helm template cdc helm/cdc-pipeline "${args[@]}" --show-only templates/streaming.yaml > /tmp/cdc-streaming.yaml
-          # Stage startup so dependent tables exist before the next driver starts.
+          # Require all tables, an actual initial fixture and live upstream pods.
           for layer in bronze silver gold; do
             python -c 'import sys; import yaml; docs=yaml.safe_load_all(open(sys.argv[1])); print(yaml.safe_dump(next(d for d in docs if d and d["metadata"]["name"]=="cdc-spark-"+sys.argv[2])))' /tmp/cdc-streaming.yaml "$layer" | kubectl -n cdc-pipeline apply -f -
-            if [ "$layer" = gold ]; then break; fi
-            timeout 600 bash -ec '
-              until [ "$(kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user ci-smoke --catalog iceberg --schema analytics --output-format TSV --execute "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''analytics'\'' AND table_name IN ($1)" 2>/tmp/cdc-trino-readiness.log || true)" = 6 ]; do
-                restarts=$(kubectl -n cdc-pipeline get pods -l "app.kubernetes.io/component=spark-$2" -o jsonpath="{.items[0].status.containerStatuses[0].restartCount}" 2>/dev/null || true)
-                if [ "${restarts:-0}" -ge 3 ]; then
-                  echo "Spark $2 restarted at least three times before creating its tables"
-                  exit 1
-                fi
-                sleep 10
-              done
-            ' sh "$(if [ "$layer" = bronze ]; then printf "'bronze_%s_cdc'," customers products orders order_items payments returns | sed 's/,$//'; else printf "'silver_%s'," customers products orders order_items payments returns | sed 's/,$//'; fi)" "$layer"
+            python scripts/kubernetes_stage_ready.py "$layer" --timeout 900
           done
           python scripts/kubernetes_cdc_smoke.py --gold --timeout 480 --gold-timeout 720 --output artifacts/kubernetes-cdc-smoke.json
+          python scripts/kubernetes_stage_ready.py gold --timeout 180
       - name: Collect cluster diagnostics
         if: always()
         run: |

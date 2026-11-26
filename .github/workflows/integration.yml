@@ -8,6 +8,14 @@ on:
         description: Verify actual Bronze/Silver CDC delivery (requires full stack)
         type: boolean
         default: true
+  # Automatically recheck infrastructure changes on main.
+  push:
+    branches: [main]
+    paths:
+      - 'hive/Dockerfile'
+      - 'docker-compose.yml'
+      - 'config/hive/**'
+      - '.github/workflows/integration.yml'
   # Weekly smoke test of the full stack — Sundays at 03:00 UTC.
   schedule:
     - cron: "0 3 * * 0"
@@ -90,7 +98,7 @@ jobs:
         run: make test-python
 
       - name: Start Bronze and wait for its six tables
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
         timeout-minutes: 6
         run: |
           make spark-bronze
@@ -101,14 +109,14 @@ jobs:
           '
 
       - name: Verify actual CDC lifecycle
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
         timeout-minutes: 20
         run: |
           make spark-silver
           python scripts/cdc_smoke.py --timeout 180 --output artifacts/cdc-smoke.json
 
       - name: Upload CDC evidence
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.live_cdc }}
+        if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
         uses: actions/upload-artifact@v4
         with:
           name: cdc-smoke-evidence

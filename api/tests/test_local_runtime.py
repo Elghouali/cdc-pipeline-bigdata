@@ -1,7 +1,8 @@
 """Local-pod telemetry and credential URL regression tests."""
 
-from config import _database_url
 from telemetry import render_local_metrics
+
+from config import _database_url
 
 
 def test_database_url_encodes_password(monkeypatch):

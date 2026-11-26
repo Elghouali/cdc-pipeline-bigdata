@@ -8,9 +8,9 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, status
+from spark_runtime import driver_urls, live_applications
 
 from config import settings
-from spark_runtime import driver_urls, live_applications
 
 logger = logging.getLogger("cdc-api.spark")
 

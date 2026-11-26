@@ -8,9 +8,9 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
+from spark_runtime import driver_urls, live_applications
 
 from config import settings
-from spark_runtime import driver_urls, live_applications
 
 router = APIRouter()
 APP_NAMES = {

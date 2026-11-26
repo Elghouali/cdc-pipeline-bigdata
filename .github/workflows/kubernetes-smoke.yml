@@ -43,6 +43,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: kubernetes-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   source-broker:
     name: Isolated kind cluster — CDC lakehouse

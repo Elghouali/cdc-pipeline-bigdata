@@ -47,7 +47,7 @@ jobs:
         run: |
           TARGETS="spark_jobs/"
           if [ -d api ]; then TARGETS="$TARGETS api/"; fi
-          ruff format --check $TARGETS
+          ruff format --check --diff $TARGETS
 
   # ──────────────────────────────────────────────────────────────────────────
   # Job 2: Lint shell scripts with shellcheck

@@ -63,6 +63,9 @@ jobs:
       - name: Generate config files
         run: make generate-configs
 
+      - name: Preflight object storage image availability
+        run: docker compose pull minio minio-init
+
       - name: Start Docker Compose stack
         run: docker compose up -d
 

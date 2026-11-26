@@ -85,7 +85,7 @@ Apache Kafka 7.5
 | Streaming | Apache Kafka (Confluent 7.5) |
 | Processing | Apache Spark 3.5 (Structured Streaming) |
 | Table format | Apache Iceberg 1.5 |
-| Object store | MinIO |
+| Object store | S3-compatible MinIO community fork (PGSTY Silo) |
 | Metastore | Hive Standalone 4.0 (MariaDB backend) |
 | Query engine | Trino 435 |
 | Backend API | FastAPI · asyncpg · aiokafka · PyJWT |
@@ -109,6 +109,12 @@ Apache Kafka 7.5
 No local JVM, Python, or Node.js required.
 
 ---
+
+### Object storage image availability (November 2026)
+
+The original public MinIO Docker Hub and Quay images are no longer reliably accessible. The Compose stack defaults to versioned PGSTY Silo/MinIO community-fork images for the server and client; existing service names, S3 endpoint, credentials and bucket paths are unchanged. The image pair is documented in [this upstream migration report](https://github.com/thunderbird/tbpro-add-on/issues/1268). These are community-maintained images, not official MinIO Inc. builds.
+
+Override `OBJECT_STORE_IMAGE` and `OBJECT_STORE_CLIENT_IMAGE` in your local environment if your organization requires a trusted registry or digest-pinned images. Validate image pulls and S3 compatibility before deployment. Do not point a new server at valuable existing volumes without a reviewed backup and migration. This change covers Docker Compose; Kubernetes manifests are not validated by this test.
 
 ## Quick Start
 

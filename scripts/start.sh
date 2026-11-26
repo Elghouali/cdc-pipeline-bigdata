@@ -97,7 +97,7 @@ spark_submit() {
   local layer="${job%_job.py}"
   docker exec -d cdc-spark-master sh -c '
     exec /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
-      --deploy-mode client --conf spark.executor.memory=1g --conf spark.cores.max=2 \
+      --deploy-mode client --conf spark.executor.memory=1g --conf spark.executor.cores=2 --conf spark.cores.max=2 \
       "/opt/spark-apps/$1" > "/tmp/cdc-$2.log" 2>&1
   ' cdc-driver "$job" "$layer"
   ok "${job} submitted (driver log: /tmp/cdc-${layer}.log in spark-master)"

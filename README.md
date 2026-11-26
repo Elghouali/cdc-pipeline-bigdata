@@ -267,7 +267,7 @@ LIMIT 10;
 
 ## Spark Jobs
 
-The default Compose configuration provisions three workers (one per 1 GiB streaming executor). Each job requests at most two cores. For the Bronze/Silver-only CI test, two workers are sufficient; the workflow starts only the data stack and API, not dashboard/monitoring services. Override `SPARK_WORKER_REPLICAS` for local capacity, but keep at least one worker per concurrently running job. Driver output is captured inside `spark-master` at `/tmp/cdc-{bronze,silver,gold}.log`.
+The default Compose configuration provisions three workers (one per 1 GiB streaming executor). Each job requests exactly two cores per executor and at most two total cores, so a single application cannot occupy the memory of multiple workers with one-core executors. The local/demo shuffle partition count is eight; tune it for larger workloads. For the Bronze/Silver-only CI test, two workers are sufficient; the workflow starts only the data stack and API, not dashboard/monitoring services. Override `SPARK_WORKER_REPLICAS` for local capacity, but keep at least one worker per concurrently running job. Driver output is captured inside `spark-master` at `/tmp/cdc-{bronze,silver,gold}.log`.
 
 Submit jobs individually (detached — streaming jobs run indefinitely):
 

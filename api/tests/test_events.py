@@ -10,7 +10,10 @@ from routers.events import _decode_envelope, _to_event, router
 def test_stream_rejects_missing_or_invalid_token():
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app) as client, patch("routers.events.AIOKafkaConsumer") as consumer:
+    with (
+        TestClient(app) as client,
+        patch("routers.events.AIOKafkaConsumer") as consumer,
+    ):
         assert client.get("/api/events/stream").status_code == 401
         assert (
             client.get(

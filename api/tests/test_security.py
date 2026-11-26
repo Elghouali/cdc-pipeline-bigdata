@@ -17,9 +17,7 @@ def test_security_rejects_weak_jwt():
 
 def test_security_rejects_weak_admin():
     with pytest.raises(RuntimeError, match="API_ADMIN_PASSWORD"):
-        replace(
-            settings, secret_key="x" * 32, admin_password="weak"
-        ).validate_security()
+        replace(settings, secret_key="x" * 32, admin_password="weak").validate_security()
 
 
 def test_login_limit_and_reset():

@@ -83,6 +83,9 @@ jobs:
       - name: Generate config files
         run: make generate-configs
 
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
       - name: Preflight object storage image availability
         run: docker compose pull minio minio-init
 

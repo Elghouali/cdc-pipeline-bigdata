@@ -3,9 +3,12 @@
 import os
 from dataclasses import dataclass
 
+
 def _require_strong_secret(name: str, value: str, minimum: int) -> None:
     if len(value) < minimum or value.lower().startswith(("change_me", "changeme")):
-        raise RuntimeError(f"{name} must be a non-placeholder secret of {minimum}+ chars.")
+        raise RuntimeError(
+            f"{name} must be a non-placeholder secret of {minimum}+ chars."
+        )
 
 
 def _split_csv(value: str) -> list[str]:

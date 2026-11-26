@@ -19,6 +19,7 @@ spec:
         {{- include "cdc-pipeline.labels" . | nindent 8 }}
         app.kubernetes.io/component: spark-master
     spec:
+      automountServiceAccountToken: false
       {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: spark-master
@@ -27,7 +28,13 @@ spec:
           command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
           env:
             - name: SPARK_MASTER_HOST
-              value: cdc-spark-master
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - name: SPARK_LOCAL_IP
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - {name: SPARK_DAEMON_MEMORY, value: "512m"}
+            - {name: SPARK_LOCAL_DIRS, value: /tmp/spark-local}
             - name: SPARK_MASTER_WEBUI_PORT
               value: "8080"
             - name: SPARK_MASTER_OPTS
@@ -101,6 +108,7 @@ spec:
         {{- include "cdc-pipeline.labels" . | nindent 8 }}
         app.kubernetes.io/component: spark-worker
     spec:
+      automountServiceAccountToken: false
       {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
       initContainers:
         - name: wait-for-master
@@ -115,6 +123,12 @@ spec:
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://cdc-spark-master:7077"]
           env:
+            - name: SPARK_LOCAL_IP
+              valueFrom:
+                fieldRef: {fieldPath: status.podIP}
+            - {name: SPARK_DAEMON_MEMORY, value: "512m"}
+            - {name: SPARK_WORKER_DIR, value: /tmp/spark-work}
+            - {name: SPARK_LOCAL_DIRS, value: /tmp/spark-local}
             - name: SPARK_WORKER_MEMORY
               value: {{ .Values.spark.worker.workerMemory | default "3G" | quote }}
             - name: SPARK_WORKER_CORES

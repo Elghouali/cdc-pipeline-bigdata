@@ -1,0 +1,85 @@
+name: Kubernetes distributed Spark scaling
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/spark-distributed.yml'
+      - 'spark_jobs/scaling_benchmark.py'
+      - 'spark/Dockerfile'
+      - 'helm/cdc-pipeline/templates/spark-deployment.yaml'
+permissions:
+  contents: read
+jobs:
+  scaling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc
+        with:
+          cluster_name: spark-scaling
+          wait: 120s
+      - name: Deploy standalone master and one worker
+        run: |
+          set -euo pipefail
+          value=$(openssl rand -hex 24)
+          echo "::add-mask::$value"
+          docker build -f spark/Dockerfile -t cdc-spark-jobs:ci .
+          kind load docker-image cdc-spark-jobs:ci --name spark-scaling
+          kubectl create namespace cdc-pipeline
+          helm template cdc helm/cdc-pipeline --namespace cdc-pipeline \
+            --set-file postgres.initSql=sql/init.sql \
+            --set-file trino.accessRules=security/trino-access-control.json \
+            --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,api.databasePassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$value,spark.image=cdc-spark-jobs:ci,spark.worker.workerCores=1,spark.worker.workerMemory=1g,spark.worker.replicas=1" \
+            --show-only templates/configmap.yaml --show-only templates/spark-deployment.yaml | kubectl -n cdc-pipeline apply -f -
+          kubectl -n cdc-pipeline rollout status deployment/cdc-spark-master --timeout=300s
+          kubectl -n cdc-pipeline rollout status deployment/cdc-spark-worker --timeout=300s
+      - name: Measure one and two actual remote executors
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          lscpu > artifacts/runner-cpu.txt
+          free -m > artifacts/runner-memory.txt
+          for workers in 1 2; do
+            kubectl -n cdc-pipeline scale deployment/cdc-spark-worker --replicas="$workers"
+            kubectl -n cdc-pipeline rollout status deployment/cdc-spark-worker --timeout=300s
+            timeout 120 bash -ec '
+              until kubectl -n cdc-pipeline exec deployment/cdc-spark-master -- python3 -c "import json,sys,urllib.request; s=json.load(urllib.request.urlopen(\"http://127.0.0.1:8080/json\",timeout=5)); sys.exit(sum(w[\"state\"]==\"ALIVE\" for w in s[\"workers\"])!=int(sys.argv[1]))" "$1"; do sleep 3; done
+            ' sh "$workers"
+            kubectl -n cdc-pipeline exec deployment/cdc-spark-master -- sh -ec '
+              exec /opt/spark/bin/spark-submit --properties-file /dev/null \
+                --master spark://cdc-spark-master:7077 --deploy-mode client \
+                --driver-memory 512m --executor-memory 512m \
+                --conf "spark.driver.host=$SPARK_MASTER_HOST" \
+                --conf spark.driver.bindAddress=0.0.0.0 --conf spark.ui.enabled=false \
+                --conf spark.executor.cores=1 --conf "spark.cores.max=$1" \
+                --conf spark.dynamicAllocation.enabled=false \
+                /opt/spark-apps/scaling_benchmark.py --workers "$1"
+            ' sh "$workers" | tee "artifacts/spark-$workers.log"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          results = []
+          for n in (1, 2):
+              lines = Path(f"artifacts/spark-{n}.log").read_text().splitlines()
+              rows = [json.loads(line.split("SCALING_RESULT ", 1)[1]) for line in lines if line.startswith("SCALING_RESULT ")]
+              assert len(rows) == 1 and len(rows[0]["executor_hosts"]) == n
+              results.extend(rows)
+          assert results[0]["checksum"] == results[1]["checksum"]
+          report = {"status": "passed", "measurements": results, "observed_speedup": round(results[0]["seconds"] / results[1]["seconds"], 3), "scope": "synthetic CPU workload; not CDC throughput"}
+          Path("artifacts/distributed-scaling.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report))
+          PY
+      - name: Capture cluster diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts
+          kubectl -n cdc-pipeline get pods -o wide > artifacts/cluster.txt 2>&1 || true
+          kubectl -n cdc-pipeline get events --sort-by=.lastTimestamp >> artifacts/cluster.txt 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: distributed-spark-evidence
+          path: artifacts/

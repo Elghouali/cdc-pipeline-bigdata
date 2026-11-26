@@ -203,6 +203,12 @@ grafana:
   # "admin" was a weak shipped default; now enforced required in secrets.yaml.
   adminPassword: ""
 
+security:
+  # Ingress-only rules; requires a NetworkPolicy-capable CNI.
+  # Enable only after testing connectivity in the actual cluster.
+  networkPolicy:
+    enabled: false
+
 monitoring:
   enabled: false
   prometheusImage: prom/prometheus:v2.50.1

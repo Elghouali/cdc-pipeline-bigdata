@@ -1,0 +1,16 @@
+# Experimental alternative runtime; strict scan must pass before promotion.
+FROM python:3.11-alpine
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+RUN apk upgrade --no-cache && addgroup -g 10001 cdc && adduser -D -H -u 10001 -G cdc cdc
+COPY requirements.txt ./
+# Fail if any required wheel is unavailable, rather than silently adding compilers.
+RUN pip install --only-binary=:all: --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y setuptools wheel \
+    && python -m pip check \
+    && python -c "import fastapi,uvicorn,asyncpg,aiokafka,passlib,bcrypt,jwt"
+COPY . .
+USER 10001:10001
+EXPOSE 8000
+HEALTHCHECK --interval=20s --timeout=5s --retries=5 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4)"
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

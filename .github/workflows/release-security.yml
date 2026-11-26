@@ -1,0 +1,73 @@
+name: Strict release security gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-security.yml'
+      - 'api/Dockerfile*'
+      - 'frontend/Dockerfile'
+      - 'hive/Dockerfile'
+      - 'spark/Dockerfile'
+permissions:
+  contents: read
+jobs:
+  release-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {name: api, image: 'cdc-api:release-ci', build: 'docker build --target prod -t cdc-api:release-ci api'}
+          - {name: api-alpine-candidate, image: 'cdc-api-alpine:release-ci', build: 'docker build -f api/Dockerfile.alpine -t cdc-api-alpine:release-ci api'}
+          - {name: frontend, image: 'cdc-frontend:release-ci', build: 'docker build --target prod -t cdc-frontend:release-ci frontend'}
+          - {name: hive, image: 'cdc-hive:release-ci', build: 'docker build -t cdc-hive:release-ci hive'}
+          - {name: spark, image: 'cdc-spark:release-ci', build: 'docker build -f spark/Dockerfile -t cdc-spark:release-ci .'}
+          - {name: postgres, image: 'postgres:15', build: ''}
+          - {name: kafka, image: 'confluentinc/cp-kafka:7.5.0', build: ''}
+          - {name: zookeeper, image: 'confluentinc/cp-zookeeper:7.5.0', build: ''}
+          - {name: connect, image: 'debezium/connect:2.5', build: ''}
+          - {name: minio, image: 'pgsty/minio:RELEASE.2026-08-04T00-00-00Z', build: ''}
+          - {name: minio-client, image: 'pgsty/mc:RELEASE.2026-09-16T00-00-00Z', build: ''}
+          - {name: mariadb, image: 'mariadb:10.11', build: ''}
+          - {name: trino, image: 'trinodb/trino:435', build: ''}
+          - {name: prometheus, image: 'prom/prometheus:v2.50.1', build: ''}
+          - {name: grafana, image: 'grafana/grafana:10.3.3', build: ''}
+          - {name: init-busybox, image: 'busybox:1.36', build: ''}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve image and record digest
+        env:
+          IMAGE: ${{ matrix.image }}
+          BUILD: ${{ matrix.build }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          if [ -n "$BUILD" ]; then
+            bash -ec "$BUILD"
+          else
+            docker pull "$IMAGE"
+          fi
+          docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$IMAGE" > evidence/image-identity.txt
+      - name: Smoke test alternate API runtime
+        if: matrix.name == 'api-alpine-candidate'
+        run: docker run --rm --entrypoint python cdc-api-alpine:release-ci -m pytest tests/ -q
+      - name: Scan all high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          format: json
+          output: evidence/vulnerabilities.json
+          exit-code: '0'
+      - name: Fail closed on any high or critical finding
+        run: python scripts/vulnerability_gate.py --release evidence/vulnerabilities.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-security-${{ matrix.name }}
+          path: evidence/
+          if-no-files-found: error

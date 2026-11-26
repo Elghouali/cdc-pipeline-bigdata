@@ -1,0 +1,51 @@
+{{- if .Values.security.networkPolicy.enabled }}
+{{- if not .Values.streaming.enabled }}
+{{- fail "The experimental ingress policy is defined for local-pod streaming mode only" }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cdc-deny-unlisted-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+{{- $flows := dict
+  "postgres" (dict "ports" (list 5432) "from" (list "connect" "connector-register" "api-db-init" "api"))
+  "zookeeper" (dict "ports" (list 2181) "from" (list "kafka"))
+  "kafka" (dict "ports" (list 9092) "from" (list "kafka" "connect" "connector-register" "spark-bronze" "api"))
+  "connect" (dict "ports" (list 8083) "from" (list "connector-register" "api"))
+  "minio" (dict "ports" (list 9000) "from" (list "minio-init" "hive-metastore" "spark-bronze" "spark-silver" "spark-gold" "trino" "api"))
+  "mariadb" (dict "ports" (list 3306) "from" (list "hive-metastore"))
+  "hive-metastore" (dict "ports" (list 9083) "from" (list "spark-bronze" "spark-silver" "spark-gold" "trino"))
+  "trino" (dict "ports" (list 8080) "from" (list "api"))
+  "spark-bronze" (dict "ports" (list 4040) "from" (list "api"))
+  "spark-silver" (dict "ports" (list 4040) "from" (list "api"))
+  "spark-gold" (dict "ports" (list 4040 8091) "from" (list "api"))
+  "api" (dict "ports" (list 8000) "from" (list "frontend" "prometheus"))
+  "prometheus" (dict "ports" (list 9090) "from" (list "grafana" "prometheus"))
+}}
+{{- range $component, $flow := $flows }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cdc-allow-{{ $component }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: {{ $component }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: {{ $flow.from | toJson }}
+      ports:
+        {{- range $port := $flow.ports }}
+        - {protocol: TCP, port: {{ $port }}}
+        {{- end }}
+{{- end }}
+{{- end }}

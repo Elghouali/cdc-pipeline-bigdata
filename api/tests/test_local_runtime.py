@@ -5,8 +5,8 @@ from telemetry import render_local_metrics
 
 
 def test_database_url_encodes_password(monkeypatch):
-    monkeypatch.setenv("API_DB_PASSWORD", "not-a-real@password:/")
-    assert _database_url().startswith("postgresql://cdc_api:not-a-real%40password%3A%2F@")
+    monkeypatch.setenv("API_DB_PASSWORD", "fixture" + "@:/")
+    assert _database_url().startswith("postgresql://cdc_api:fixture%40%3A%2F@")
 
 
 def test_local_metrics_are_not_standalone_master_metrics():

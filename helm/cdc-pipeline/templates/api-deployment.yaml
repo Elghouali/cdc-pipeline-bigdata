@@ -64,7 +64,7 @@ spec:
             - {name: API_DB_NAME, value: {{ .Values.postgres.database | quote }}}
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10

@@ -1,0 +1,178 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/cdc-alerts.yml
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+      - job_name: cdc-api
+        static_configs:
+          - targets: ['cdc-api:{{ .Values.api.service.port }}']
+  cdc-alerts.yml: |
+    groups:
+      - name: cdc
+        rules:
+          - alert: CDCAPIDown
+            expr: up{job="cdc-api"} == 0
+            for: 1m
+          - alert: CDCConnectorUnhealthy
+            expr: cdc_connector_healthy != 1
+            for: 2m
+          - alert: CDCDriverMissing
+            expr: cdc_spark_driver_active != 1
+            for: 5m
+          - alert: CDCGoldRefreshStale
+            expr: time() - cdc_gold_last_success_timestamp_seconds > 900
+            for: 2m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: prometheus}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/component: prometheus}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: prometheus
+          image: {{ .Values.monitoring.prometheusImage | quote }}
+          args: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=24h"]
+          ports:
+            - {name: http, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /-/ready, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: "50m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "512Mi"}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus, readOnly: true}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: cdc-prometheus-config}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-prometheus
+spec:
+  selector: {app.kubernetes.io/component: prometheus}
+  ports:
+    - {name: http, port: 9090, targetPort: http}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-grafana-config
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://cdc-prometheus:9090
+        isDefault: true
+        editable: false
+  dashboard-provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: cdc
+        folder: CDC
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+  dashboard.json: |
+    {
+      "uid": "cdc-k8s-runtime", "title": "CDC Kubernetes runtime",
+      "schemaVersion": 39, "version": 1, "refresh": "15s", "time": {"from": "now-30m", "to": "now"},
+      "panels": [
+        {"id":1,"title":"Spark drivers active by layer","type":"timeseries","gridPos":{"x":0,"y":0,"w":12,"h":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"refId":"A","expr":"cdc_spark_driver_active","legendFormat":"{{ "{{layer}}" }}"}]},
+        {"id":2,"title":"Connector healthy","type":"stat","gridPos":{"x":12,"y":0,"w":12,"h":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"refId":"A","expr":"cdc_connector_healthy"}]},
+        {"id":3,"title":"Gold last success age (seconds)","type":"timeseries","gridPos":{"x":0,"y":8,"w":12,"h":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"refId":"A","expr":"time() - cdc_gold_last_success_timestamp_seconds"}]},
+        {"id":4,"title":"API scrape availability","type":"stat","gridPos":{"x":12,"y":8,"w":12,"h":8},"datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"refId":"A","expr":"up{job=\"cdc-api\"}"}]}
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: grafana}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/component: grafana}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        fsGroup: 472
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: grafana
+          image: {{ .Values.monitoring.grafanaImage | quote }}
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: cdc-secrets, key: GRAFANA_ADMIN_PASSWORD}
+            - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "false"}
+            - {name: GF_USERS_ALLOW_SIGN_UP, value: "false"}
+          ports:
+            - {name: http, containerPort: 3000}
+          readinessProbe:
+            httpGet: {path: /api/health, port: http}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: "50m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "512Mi"}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/grafana}
+            - {name: config, mountPath: /etc/grafana/provisioning/datasources/cdc.yaml, subPath: datasource.yaml, readOnly: true}
+            - {name: config, mountPath: /etc/grafana/provisioning/dashboards/cdc.yaml, subPath: dashboard-provider.yaml, readOnly: true}
+            - {name: config, mountPath: /var/lib/grafana/dashboards/cdc.json, subPath: dashboard.json, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: cdc-grafana-config}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-grafana
+spec:
+  selector: {app.kubernetes.io/component: grafana}
+  ports:
+    - {name: http, port: 3000, targetPort: http}
+{{- end }}

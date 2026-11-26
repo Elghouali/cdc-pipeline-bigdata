@@ -538,3 +538,7 @@ Spark drivers use bounded local supervisors (`make spark-all`, `make spark-statu
 The frontend production image builds static assets and proxies API/SSE requests through Nginx. CI builds and scans both application images, publishes commit-specific tags, and validates manifest rendering. Image publication is blocked by critical findings and fixable high findings. Unfixed high findings remain release blockers; the reports are not a clean bill of health. See [deployment readiness](docs/DEPLOYMENT_READINESS.md) for evidence and blockers.
 
 Verified 100-row burst evidence: 17.168 s Bronze, 47.897 s Silver, 68.989 s Gold after source commit; source insert rate 619.528 rows/s (single transaction, not sustained pipeline throughput). See [run 45886441779](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45886441779) and [methodology](docs/DEPLOYMENT_READINESS.md).
+
+### Kubernetes acceptance evidence
+
+The [verified kind run](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45906790633) created all 17 Bronze/Silver/Gold tables and checked a real customer insert, update and delete through each layer. Checkpoint recovery, application deployment, monitoring and security extensions are subject to subsequent workflow results. The local-mode Spark pods are not a distributed scalability benchmark.

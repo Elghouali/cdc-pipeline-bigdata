@@ -16,8 +16,8 @@ from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import KafkaError
 from auth import decode_token, get_current_user, oauth2_scheme
 from fastapi import APIRouter, Depends, Request
-from models import User
 from fastapi.responses import StreamingResponse
+from models import User
 
 from config import CDC_TOPICS, settings
 
@@ -55,9 +55,8 @@ def _to_event(topic: str, envelope: dict[str, Any]) -> dict[str, Any]:
         "payload": {},
     }
 
-async def _event_generator(
-    request: Request, expires_at: float
-) -> AsyncIterator[bytes]:
+
+async def _event_generator(request: Request, expires_at: float) -> AsyncIterator[bytes]:
     # Each SSE connection gets a unique group_id so every browser tab receives
     # all events. A shared group_id would cause Kafka to load-balance messages
     # across connections, meaning each tab sees only a fraction of events.

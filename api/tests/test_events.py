@@ -12,9 +12,12 @@ def test_stream_rejects_missing_or_invalid_token():
     app.include_router(router)
     with TestClient(app) as client, patch("routers.events.AIOKafkaConsumer") as consumer:
         assert client.get("/api/events/stream").status_code == 401
-        assert client.get(
-            "/api/events/stream", headers={"Authorization": "Bearer invalid"}
-        ).status_code == 401
+        assert (
+            client.get(
+                "/api/events/stream", headers={"Authorization": "Bearer invalid"}
+            ).status_code
+            == 401
+        )
         consumer.assert_not_called()
 
 

@@ -46,7 +46,11 @@ SCHEMA = "analytics"
 
 
 def get_spark() -> SparkSession:
-    return SparkSession.builder.appName("cdc-bronze-ingestion").getOrCreate()
+    return (
+        SparkSession.builder.appName("cdc-bronze-ingestion")
+        .config("spark.sql.catalog.iceberg.cache-enabled", "false")
+        .getOrCreate()
+    )
 
 
 def ensure_schema(spark: SparkSession) -> None:
@@ -80,7 +84,57 @@ def create_bronze_table(spark: SparkSession, table: str) -> None:
             'write.parquet.compression-codec'  = 'snappy'
         )
     """)
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {CATALOG}.{SCHEMA}.quarantine_{table}
+        USING iceberg
+        PARTITIONED BY (ingestion_date)
+        AS SELECT *, CAST(NULL AS STRING) AS rejection_reason
+        FROM {full_name} WHERE 1 = 0
+    """)
     logger.info("Bronze table ready: %s", full_name)
+
+
+EVENT_KEY = ["kafka_topic", "kafka_partition", "kafka_offset"]
+
+
+def unseen_events(incoming: DataFrame, existing: DataFrame) -> DataFrame:
+    """Append-only replay filter for a single writer and stable topic identity."""
+    return incoming.dropDuplicates(EVENT_KEY).join(
+        existing.select(*EVENT_KEY), EVENT_KEY, "left_anti"
+    )
+
+
+def classify_events(parsed: DataFrame, table: str) -> DataFrame:
+    payload = F.when(F.col("op") == "d", F.col("before_payload")).otherwise(
+        F.col("after_payload")
+    )
+    row_id = F.get_json_object(payload, "$.id").cast("int")
+    key_id = F.get_json_object("kafka_key", "$.id").cast("int")
+    reason = (
+        F.when(F.col("raw_payload").isNull(), F.lit("null_value"))
+        .when(
+            ~F.coalesce(F.col("op").isin("c", "r", "u", "d"), F.lit(False)),
+            F.lit("invalid_operation"),
+        )
+        .when(
+            ~F.col("source_table").eqNullSafe(F.lit(table)),
+            F.lit("unexpected_source_table"),
+        )
+        .when(
+            row_id.isNull() | key_id.isNull() | (row_id != key_id),
+            F.lit("invalid_primary_key"),
+        )
+    )
+    return parsed.withColumn("rejection_reason", reason)
+
+
+def append_unseen(
+    spark: SparkSession, target: str, incoming: DataFrame
+) -> None:
+    spark.catalog.refreshTable(target)
+    fresh = unseen_events(incoming, spark.table(target))
+    if not fresh.isEmpty():
+        fresh.writeTo(target).append()
 
 
 def parse_and_write(
@@ -133,25 +187,16 @@ def parse_and_write(
         )
     )
 
-    # Split valid and invalid rows in a single pass to avoid recomputing the plan.
-    # Rows with op=null are Debezium heartbeats or schema-change tombstones.
-    valid = parsed.filter(F.col("op").isNotNull())
-    invalid = parsed.filter(F.col("op").isNull())
-
-    # Count invalids only — cheaper than caching the full dataset. The old
-    # cache/count/writeTo pattern materialised the entire enriched dataset in
-    # executor memory before writing, causing OOM on large batches.
-    dropped = invalid.count()
-    if dropped > 0:
-        logger.warning(
-            "Batch %d | table=%-12s | dropped %d null-op rows (heartbeats/tombstones)",
-            batch_id,
-            table,
-            dropped,
-        )
-
-    valid.writeTo(f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc").append()
-    logger.info("Batch %d | table=%-12s | written", batch_id, table)
+    classified = classify_events(parsed, table)
+    invalid = classified.filter(F.col("rejection_reason").isNotNull())
+    valid = classified.filter(F.col("rejection_reason").isNull()).drop(
+        "rejection_reason"
+    )
+    # Both sinks are append-only and replay-filtered. A retry after either
+    # commit must not add the same Kafka identity a second time.
+    append_unseen(spark, f"{CATALOG}.{SCHEMA}.quarantine_{table}", invalid)
+    append_unseen(spark, f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc", valid)
+    logger.info("Batch %d | table=%-12s | processed", batch_id, table)
 
 
 def start_table_stream(spark: SparkSession, table: str):
@@ -164,7 +209,7 @@ def start_table_stream(spark: SparkSession, table: str):
         .option("subscribe", topic)
         .option("startingOffsets", "earliest")
         .option("maxOffsetsPerTrigger", 10_000)
-        .option("failOnDataLoss", "false")
+        .option("failOnDataLoss", "true")
         .load()
     )
 

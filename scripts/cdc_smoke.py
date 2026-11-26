@@ -133,7 +133,7 @@ def run(args):
             elif op == "d":
                 current_check = "source:delete"
                 postgres(f"DELETE FROM customers WHERE id={customer_id};")
-            observe(f"bronze:{op}", bronze_sql(customer_id, op), lambda n: n >= 1)
+            observe(f"bronze:{op}", bronze_sql(customer_id, op), lambda n: n == 1)
             report["checks"][-1]["observed_since_stage_start_seconds"] = round(time.monotonic() - started, 3)
             observe(f"silver:{op}", silver_sql(customer_id, city, op == "d"), lambda n: n == 1)
             report["checks"][-1]["observed_since_stage_start_seconds"] = round(time.monotonic() - started, 3)

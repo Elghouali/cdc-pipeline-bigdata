@@ -25,6 +25,7 @@ from datetime import date
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +35,25 @@ logger = logging.getLogger("gold_job")
 
 CATALOG = "iceberg"
 SCHEMA = "analytics"
+MONEY_COLUMNS = {
+    "gold_customers": [
+        "total_spent",
+        "avg_order_value"
+    ],
+    "gold_orders": ["order_total"],
+    "gold_sales_facts": [
+        "gross_revenue",
+        "net_revenue",
+        "avg_order_value"
+    ],
+    "gold_payments_summary": [
+        "total_amount",
+        "completed_amount",
+        "refunded_amount",
+        "pending_amount"
+    ]
+}
+
 
 
 def get_spark() -> SparkSession:
@@ -75,8 +95,8 @@ def create_gold_tables(spark: SparkSession) -> None:
         delivered_orders BIGINT,
         cancelled_orders BIGINT,
         returned_orders  BIGINT,
-        total_spent      DOUBLE,
-        avg_order_value  DOUBLE,
+        total_spent      DECIMAL(28,2),
+        avg_order_value  DECIMAL(28,2),
         last_order_date  DATE,
         first_order_date DATE,
         _updated_at      TIMESTAMP
@@ -96,7 +116,7 @@ def create_gold_tables(spark: SparkSession) -> None:
         customer_city    STRING,
         status           STRING,
         channel          STRING,
-        order_total      DOUBLE,
+        order_total      DECIMAL(28,2),
         item_count       BIGINT,
         payment_method   STRING,
         payment_status   STRING,
@@ -118,10 +138,10 @@ def create_gold_tables(spark: SparkSession) -> None:
         delivered_count  BIGINT,
         cancelled_count  BIGINT,
         returned_count   BIGINT,
-        gross_revenue    DOUBLE,
-        net_revenue      DOUBLE,
+        gross_revenue    DECIMAL(28,2),
+        net_revenue      DECIMAL(28,2),
         total_items_sold BIGINT,
-        avg_order_value  DOUBLE,
+        avg_order_value  DECIMAL(28,2),
         _updated_at      TIMESTAMP
     """,
         )
@@ -134,10 +154,10 @@ def create_gold_tables(spark: SparkSession) -> None:
         payment_month     STRING,
         method            STRING,
         transaction_count BIGINT,
-        total_amount      DOUBLE,
-        completed_amount  DOUBLE,
-        refunded_amount   DOUBLE,
-        pending_amount    DOUBLE,
+        total_amount      DECIMAL(28,2),
+        completed_amount  DECIMAL(28,2),
+        refunded_amount   DECIMAL(28,2),
+        pending_amount    DECIMAL(28,2),
         _updated_at       TIMESTAMP
     """,
         )
@@ -157,6 +177,11 @@ def create_gold_tables(spark: SparkSession) -> None:
         )
     )
 
+    for table, columns in MONEY_COLUMNS.items():
+        schema = spark.table(f"{CATALOG}.{SCHEMA}.{table}").schema
+        for column in columns:
+            if schema[column].dataType.simpleString() != "decimal(28,2)":
+                raise RuntimeError(f"{table}.{column} requires explicit decimal migration")
     logger.info("All Gold tables ready.")
 
 
@@ -186,7 +211,7 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
     )
 
     pay_agg = (
-        p.join(
+        p.filter(F.col("status") == "completed").join(
             o.select(F.col("id").alias("oid"), "customer_id"),
             p.order_id == F.col("oid"),
         )
@@ -208,15 +233,15 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
             F.coalesce(order_agg.delivered_orders, F.lit(0)).alias("delivered_orders"),
             F.coalesce(order_agg.cancelled_orders, F.lit(0)).alias("cancelled_orders"),
             F.coalesce(order_agg.returned_orders, F.lit(0)).alias("returned_orders"),
-            F.coalesce(pay_agg.total_spent, F.lit(0.0)).alias("total_spent"),
+            F.coalesce(pay_agg.total_spent, F.lit(0).cast("decimal(28,2)")).alias("total_spent"),
             # avg_order_value = total_spent / total_orders, not AVG(payment.amount):
             # one order can span multiple payments so AVG(amount) would be wrong.
             F.when(
                 order_agg.total_orders > 0,
-                F.coalesce(pay_agg.total_spent, F.lit(0.0))
-                / order_agg.total_orders.cast("double"),
+                F.coalesce(pay_agg.total_spent, F.lit(0).cast("decimal(28,2)"))
+                / order_agg.total_orders,
             )
-            .otherwise(0.0)
+            .otherwise(F.lit(0).cast("decimal(28,2)"))
             .alias("avg_order_value"),
             order_agg.last_order_date,
             order_agg.first_order_date,
@@ -241,6 +266,16 @@ def build_gold_orders(spark: SparkSession) -> DataFrame:
         F.sum(F.col("quantity") * F.col("unit_price")).alias("order_total"),
         F.sum("quantity").alias("item_count"),
     )
+
+    # Stable single payment descriptor per order; prefer completed payments,
+    # then the latest date and source primary key.
+    ranking = Window.partitionBy("order_id").orderBy(
+        (F.col("status") == "completed").desc(),
+        F.col("payment_date").desc(),
+        F.col("id").desc(),
+    )
+    p = p.withColumn("_rank", F.row_number().over(ranking)).filter("_rank = 1")
+    r = r.filter(F.col("status").isin("approved", "completed"))
 
     return (
         o.join(
@@ -272,7 +307,7 @@ def build_gold_orders(spark: SparkSession) -> DataFrame:
             F.col("city").alias("customer_city"),
             o.status,
             o.channel,
-            F.coalesce("order_total", F.lit(0.0)).alias("order_total"),
+            F.coalesce("order_total", F.lit(0).cast("decimal(28,2)")).alias("order_total"),
             F.coalesce("item_count", F.lit(0)).alias("item_count"),
             F.col("pay_method").alias("payment_method"),
             F.col("pay_status").alias("payment_status"),
@@ -310,7 +345,7 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
                 "channel",
             ),
             oi.order_id == F.col("oid"),
-            "left",
+            "inner",
         )
         .join(
             c.select(F.col("id").alias("cid"), "segment"),
@@ -344,7 +379,7 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
                 F.when(
                     F.col("status").isin("delivered", "shipped"),
                     F.col("quantity") * F.col("unit_price"),
-                ).otherwise(0.0)
+                ).otherwise(F.lit(0).cast("decimal(28,2)"))
             ).alias("net_revenue"),
             F.sum("quantity").alias("total_items_sold"),
         )
@@ -352,7 +387,7 @@ def build_gold_sales_facts(spark: SparkSession) -> DataFrame:
             "avg_order_value",
             F.when(
                 F.col("order_count") > 0, F.col("gross_revenue") / F.col("order_count")
-            ).otherwise(0.0),
+            ).otherwise(F.lit(0).cast("decimal(28,2)")),
         )
         .withColumn("_updated_at", F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
@@ -368,13 +403,13 @@ def build_gold_payments_summary(spark: SparkSession) -> DataFrame:
             F.count("id").alias("transaction_count"),
             F.sum("amount").alias("total_amount"),
             F.sum(
-                F.when(F.col("status") == "completed", F.col("amount")).otherwise(0.0)
+                F.when(F.col("status") == "completed", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
             ).alias("completed_amount"),
             F.sum(
-                F.when(F.col("status") == "refunded", F.col("amount")).otherwise(0.0)
+                F.when(F.col("status") == "refunded", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
             ).alias("refunded_amount"),
             F.sum(
-                F.when(F.col("status") == "pending", F.col("amount")).otherwise(0.0)
+                F.when(F.col("status") == "pending", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
             ).alias("pending_amount"),
         )
         .withColumn("_updated_at", F.current_timestamp())
@@ -386,35 +421,29 @@ def build_gold_returns_summary(spark: SparkSession) -> DataFrame:
     r = spark.table(f"{CATALOG}.{SCHEMA}.silver_returns").filter("_is_deleted = false")
     o = spark.table(f"{CATALOG}.{SCHEMA}.silver_orders").filter("_is_deleted = false")
 
-    # Monthly delivered order counts — used as per-month denominator so that
-    # return_rate_pct is meaningful (returns this month / delivered this month).
-    # Using an all-time total would make the rate shrink every month regardless
-    # of actual return behaviour.
-    monthly_delivered = (
-        o.filter(F.col("status") == "delivered")
-        .withColumn("order_month", F.date_format("order_date", "yyyy-MM"))
-        .groupBy("order_month")
-        .agg(F.count("id").alias("delivered_count"))
+    # Cohort = order month, eligible orders are delivered or returned.
+    # Each reason/status rate is distinct eligible orders in that cohort;
+    # categories can overlap and are not additive.
+    eligible = o.filter(F.col("status").isin("delivered", "returned")).select(
+        F.col("id").alias("oid"),
+        F.date_format("order_date", "yyyy-MM").alias("return_month"),
     )
-
+    denominator = eligible.groupBy("return_month").agg(
+        F.countDistinct("oid").alias("eligible_count")
+    )
     returns_agg = (
-        r.withColumn("return_month", F.date_format("return_date", "yyyy-MM"))
+        r.join(eligible, r.order_id == eligible.oid, "inner")
         .groupBy("return_month", "reason", F.col("status").alias("return_status"))
-        .agg(F.count("id").alias("return_count"))
+        .agg(F.countDistinct("order_id").alias("return_count"))
     )
-
     return (
-        returns_agg.join(
-            monthly_delivered,
-            returns_agg.return_month == monthly_delivered.order_month,
-            "left",
-        )
+        returns_agg.join(denominator, "return_month", "inner")
         .withColumn(
             "return_rate_pct",
             F.when(
-                F.col("delivered_count").isNotNull() & (F.col("delivered_count") > 0),
-                F.col("return_count") / F.col("delivered_count") * 100.0,
-            ).otherwise(0.0),
+                F.col("return_status").isin("approved", "completed"),
+                F.col("return_count") / F.col("eligible_count") * 100.0,
+            ).otherwise(F.lit(0).cast("decimal(28,2)")),
         )
         .withColumn("_updated_at", F.current_timestamp())
         .withColumn("snapshot_date", F.current_date())
@@ -438,6 +467,8 @@ def refresh_gold_table(
 ) -> None:
     # Overwrite today's partition even if the new snapshot contains no rows.
     # Dynamic overwrite would leave stale data when a partition becomes empty.
+    for column in MONEY_COLUMNS.get(name, []):
+        df = df.withColumn(column, F.col(column).cast("decimal(28,2)"))
     df.withColumn("snapshot_date", F.lit(snapshot_date)).writeTo(
         f"{CATALOG}.{SCHEMA}.{name}"
     ).overwrite(F.col("snapshot_date") == F.lit(snapshot_date))

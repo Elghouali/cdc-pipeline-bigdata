@@ -62,7 +62,7 @@ SILVER_DEF = {
             ("name", "STRING"),
             ("category", "STRING"),
             ("brand", "STRING"),
-            ("price", "DOUBLE"),
+            ("price", "DECIMAL(10,2)"),
             ("stock_qty", "INT"),
         ],
     },
@@ -83,7 +83,7 @@ SILVER_DEF = {
             ("order_id", "INT"),
             ("product_id", "INT"),
             ("quantity", "INT"),
-            ("unit_price", "DOUBLE"),
+            ("unit_price", "DECIMAL(10,2)"),
         ],
     },
     "payments": {
@@ -93,7 +93,7 @@ SILVER_DEF = {
             ("order_id", "INT"),
             ("payment_date", "DATE"),
             ("method", "STRING"),
-            ("amount", "DOUBLE"),
+            ("amount", "DECIMAL(12,2)"),
             ("status", "STRING"),
         ],
     },
@@ -149,6 +149,14 @@ def create_silver_tables(spark: SparkSession) -> None:
                 f"silver_{table} requires an explicit rebuild or migration; "
                 "see docs/SILVER_ORDERING.md"
             )
+        schema = spark.table(f"{CATALOG}.{SCHEMA}.silver_{table}").schema
+        for column, expected in defn["cols"]:
+            if expected.startswith("DECIMAL") and (
+                schema[column].dataType.simpleString().upper() != expected
+            ):
+                raise RuntimeError(
+                    f"silver_{table}.{column} requires explicit decimal migration"
+                )
         logger.info("Silver table ready: silver_%s", table)
 
 
@@ -168,8 +176,8 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
             df = df.withColumn(col_name, raw.cast("int"))
         elif col_type == "BIGINT":
             df = df.withColumn(col_name, raw.cast("long"))
-        elif col_type == "DOUBLE":
-            df = df.withColumn(col_name, raw.cast("double"))
+        elif col_type.startswith("DECIMAL"):
+            df = df.withColumn(col_name, raw.cast(col_type))
         elif col_type == "DATE":
             # connect mode (our config): Debezium encodes DATE as int32 days
             # since epoch — try that first. ISO string fallbacks handle any
@@ -177,7 +185,7 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
             df = df.withColumn(
                 col_name,
                 F.coalesce(
-                    F.to_date((raw.cast("long") * 86400).cast("timestamp")),
+                    F.date_add(F.lit("1970-01-01").cast("date"), raw.cast("int")),
                     F.to_date(raw, "yyyy-MM-dd"),
                     F.to_date(raw, "yyyy-MM-dd'T'HH:mm:ss"),
                 ),
@@ -194,8 +202,25 @@ def extract_columns(df: DataFrame, table: str) -> DataFrame:
         .withColumn("_is_deleted", F.col("op") == "d")
         .withColumn("updated_date", F.current_date())
         .drop("_p")
-        .filter(F.col(defn["pk"]).isNotNull())
     )
+
+
+def validate_rows(df: DataFrame, table: str) -> None:
+    """Reject invalid typed records without advancing the Silver checkpoint.
+
+    Delete payloads may contain only a primary key (Postgres replica identity).
+    Non-delete source fields are all NOT NULL in the source schema.
+    """
+    invalid = (
+        F.col("id").isNull()
+        | ~F.coalesce(F.col("_op").isin("c", "r", "u", "d"), F.lit(False))
+    )
+    missing = F.lit(False)
+    for column, _ in SILVER_DEF[table]["cols"]:
+        missing = missing | F.col(column).isNull()
+    invalid = invalid | ((F.col("_op") != "d") & missing)
+    if not df.filter(invalid).isEmpty():
+        raise ValueError(f"Invalid typed CDC row for {table}; reconcile Bronze")
 
 
 def dedup(df: DataFrame, pk: str) -> DataFrame:
@@ -271,6 +296,7 @@ def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> Non
     pk = defn["pk"]
     view = f"_silver_src_{table}_{batch_id}"
     parsed = extract_columns(df, table)
+    validate_rows(parsed, table)
     deduped = dedup(parsed, pk)
     all_cols = (
         [c for c, _ in defn["cols"]] + [m for m, _ in META_COLS] + ["updated_date"]

@@ -23,6 +23,13 @@
       "user": "api",
       "catalog": "iceberg",
       "schema": "analytics",
+      "table": "quarantine_.*",
+      "privileges": []
+    },
+    {
+      "user": "api",
+      "catalog": "iceberg",
+      "schema": "analytics",
       "table": "bronze_.*_cdc",
       "privileges": [
         "SELECT"

@@ -552,3 +552,7 @@ All queries filter to `snapshot_date = MAX(snapshot_date)` to avoid double-count
 | Superset (pip install trino, first run) | 2–3 min |
 
 `scripts/start.sh` waits for each service before proceeding — no manual timing needed.
+
+### Data correctness contract
+
+See [data correctness and migration](docs/DATA_CORRECTNESS.md) for replay assumptions, quarantine, monetary schema changes, metric definitions and test scope. Do not delete existing volumes to upgrade.

@@ -81,9 +81,17 @@ spec:
                 secretKeyRef:
                   name: cdc-secrets
                   key: MINIO_ROOT_PASSWORD
-          readinessProbe:
+          # Gate readiness on a real query, not merely a listening HTTP port.
+          startupProbe:
             httpGet: {path: /v1/status, port: tcp}
             periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["trino", "--user", "api", "--execute", "SELECT 1"]
+            timeoutSeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
           resources:
             {{- toYaml .Values.trino.resources | nindent 12 }}
           volumeMounts:

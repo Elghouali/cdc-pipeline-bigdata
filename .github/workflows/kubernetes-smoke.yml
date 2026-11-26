@@ -110,6 +110,12 @@ jobs:
           set -euo pipefail
           kubectl -n cdc-pipeline rollout status deployment/cdc-hive-metastore --timeout=480s
           kubectl -n cdc-pipeline rollout status deployment/cdc-trino --timeout=480s
+          # HTTP availability alone does not guarantee the query engine is initialized.
+          timeout 240 bash -ec '
+            until kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user api --execute "SELECT 1" > /tmp/trino-ready.log 2>&1; do
+              sleep 5
+            done
+          ' || { cat /tmp/trino-ready.log; exit 1; }
           kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user api --execute 'SHOW SCHEMAS FROM iceberg'
           if kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user api --execute 'CREATE SCHEMA iceberg.security_probe' >/tmp/denial.log 2>&1; then
             echo "Unexpected schema creation permission"

@@ -87,7 +87,8 @@ def gold_sql(customer_id, city=None):
     if city is None:
         return f"SELECT count(*) FROM gold_customers WHERE {where}"
     return (
-        f"SELECT CASE WHEN count(*) = 1 AND count_if(city = '{city}') = 1 "
+        f"SELECT CASE WHEN count(*) = 1 AND count_if(city = '{city}' AND total_orders = 0 "
+        "AND total_spent = 0 AND avg_order_value = 0) = 1 "
         f"THEN 1 ELSE 0 END FROM gold_customers WHERE {where}"
     )
 

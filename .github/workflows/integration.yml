@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       live_cdc:
-        description: Verify actual Bronze/Silver CDC delivery (requires full stack)
+        description: Verify actual Bronze/Silver/Gold CDC delivery
         type: boolean
         default: true
   # Automatically recheck infrastructure changes on main.
@@ -32,7 +32,7 @@ jobs:
     name: CDC data-stack integration
     runs-on: ubuntu-latest
     # The full Docker stack (Kafka, Postgres, Spark, Trino, ...) needs headroom.
-    timeout-minutes: 45
+    timeout-minutes: 65
     permissions:
       contents: read
     steps:
@@ -79,10 +79,10 @@ jobs:
         run: docker compose pull minio minio-init
 
       - name: Start Docker Compose stack
-        # Two independent executors for the two streaming applications.
+        # Three independent executors for Bronze, Silver, and Gold.
         # Avoid unrelated dashboard/monitoring memory pressure on CI runners.
         run: |
-          docker compose up -d --scale spark-worker=2 postgres kafka-connect spark-master spark-worker trino api
+          docker compose up -d --scale spark-worker=3 postgres kafka-connect spark-master spark-worker trino api
 
       - name: Wait for services to be healthy
         run: |
@@ -117,10 +117,16 @@ jobs:
 
       - name: Verify actual CDC lifecycle
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
-        timeout-minutes: 20
+        timeout-minutes: 45
         run: |
           make spark-silver
-          python scripts/cdc_smoke.py --timeout 300 --output artifacts/cdc-smoke.json
+          timeout 300 bash -c '
+            until [ "$(docker compose exec -T trino trino --catalog iceberg --schema analytics --output-format TSV --execute "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''analytics'\'' AND table_name IN ('\''silver_customers'\'', '\''silver_products'\'', '\''silver_orders'\'', '\''silver_order_items'\'', '\''silver_payments'\'', '\''silver_returns'\'')" 2>/dev/null || true)" = 6 ]; do
+              sleep 10
+            done
+          '
+          make spark-gold GOLD_REFRESH_SECONDS=30
+          python scripts/cdc_smoke.py --gold --timeout 300 --gold-timeout 600 --output artifacts/cdc-smoke.json
 
       - name: Upload CDC evidence
         if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}

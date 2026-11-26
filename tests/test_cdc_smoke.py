@@ -27,7 +27,9 @@ class SmokeTest(unittest.TestCase):
 
     def test_gold_uses_current_snapshot(self):
         self.assertIn("snapshot_date = current_date", smoke.gold_sql(123))
-        self.assertIn("count_if(city = 'Rabat')", smoke.gold_sql(123, "Rabat"))
+        self.assertIn("count_if(city = 'Rabat' AND total_orders = 0", smoke.gold_sql(123, "Rabat"))
+        self.assertIn("total_spent = 0", smoke.gold_sql(123, "Rabat"))
+        self.assertIn("avg_order_value = 0", smoke.gold_sql(123, "Rabat"))
 
     def test_wait_retries_until_expected_state(self):
         with patch.object(smoke, "trino_count", side_effect=[0, 1]) as query:

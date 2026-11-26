@@ -2,7 +2,7 @@
 gold_job.py — Medallion Layer: Gold
 
 Reads Silver Iceberg tables, applies business aggregations, and upserts
-Gold fact/dimension tables via Iceberg partition overwrite.
+Gold fact/dimension tables via explicit daily partition overwrite.
 
 Gold tables produced (iceberg.analytics.*):
   gold_customers        - customer 360: order count, total spend, last order
@@ -12,13 +12,16 @@ Gold tables produced (iceberg.analytics.*):
   gold_returns_summary  - return rate and reason breakdown by month
 
 Partition column: snapshot_date DATE (today's date for all tables).
-Trigger: every 5 minutes via a streaming heartbeat on silver_orders.
+Schedule: periodic batch refresh (300 seconds by default), independent of order events.
 
 Run:
   spark-submit --master spark://spark-master:7077 /opt/spark-apps/gold_job.py
 """
 
+import argparse
 import logging
+import time
+from datetime import date
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -427,59 +430,68 @@ def build_gold_returns_summary(spark: SparkSession) -> DataFrame:
 
 
 def refresh_gold_table(
-    spark: SparkSession, name: str, df: DataFrame, batch_id: int
+    name: str, df: DataFrame, batch_id: int, snapshot_date: date
 ) -> None:
-    df.writeTo(f"{CATALOG}.{SCHEMA}.{name}").overwritePartitions()
+    # Overwrite today's partition even if the new snapshot contains no rows.
+    # Dynamic overwrite would leave stale data when a partition becomes empty.
+    df.withColumn("snapshot_date", F.lit(snapshot_date)).writeTo(
+        f"{CATALOG}.{SCHEMA}.{name}"
+    ).overwrite(F.col("snapshot_date") == F.lit(snapshot_date))
     logger.info("Batch %d | %-28s | refreshed", batch_id, name)
 
 
-def run_gold_refresh(spark: SparkSession, _df: DataFrame, batch_id: int) -> None:
+def run_gold_refresh(spark: SparkSession, batch_id: int) -> None:
+    # Freeze one date across all five outputs, including midnight refreshes.
+    snapshot_date = spark.sql("SELECT current_date() AS day").first().day
     logger.info("Gold refresh triggered — batch %d", batch_id)
     try:
         refresh_gold_table(
-            spark, "gold_customers", build_gold_customers(spark), batch_id
-        )
-        refresh_gold_table(spark, "gold_orders", build_gold_orders(spark), batch_id)
-        refresh_gold_table(
-            spark, "gold_sales_facts", build_gold_sales_facts(spark), batch_id
+            "gold_customers", build_gold_customers(spark), batch_id, snapshot_date
         )
         refresh_gold_table(
-            spark, "gold_payments_summary", build_gold_payments_summary(spark), batch_id
+            "gold_orders", build_gold_orders(spark), batch_id, snapshot_date
         )
         refresh_gold_table(
-            spark, "gold_returns_summary", build_gold_returns_summary(spark), batch_id
+            "gold_sales_facts", build_gold_sales_facts(spark), batch_id, snapshot_date
+        )
+        refresh_gold_table(
+            "gold_payments_summary",
+            build_gold_payments_summary(spark),
+            batch_id,
+            snapshot_date,
+        )
+        refresh_gold_table(
+            "gold_returns_summary",
+            build_gold_returns_summary(spark),
+            batch_id,
+            snapshot_date,
         )
     except Exception as exc:
         logger.exception("Gold refresh batch %d error: %s", batch_id, exc)
-        # Re-raise so Spark marks the batch as failed rather than silently
-        # continuing with stale Gold tables and no visible signal.
         raise
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--interval-seconds", type=int, default=300)
+    args = parser.parse_args()
+    if args.interval_seconds <= 0:
+        parser.error("Refresh interval must be positive")
+
     spark = get_spark()
     spark.sparkContext.setLogLevel("WARN")
-
-    create_gold_tables(spark)
-
-    # Heartbeat stream: silver_orders drives the 5-min trigger cycle
-    heartbeat = (
-        spark.readStream.format("iceberg")
-        .option("stream-from-timestamp", "0")
-        .load(f"{CATALOG}.{SCHEMA}.silver_orders")
-    )
-
-    query = (
-        heartbeat.writeStream.foreachBatch(
-            lambda df, bid: run_gold_refresh(spark, df, bid)
-        )
-        .option("checkpointLocation", "s3a://warehouse/checkpoints/gold/main")
-        .trigger(processingTime="5 minutes")
-        .start()
-    )
-
-    logger.info("Gold aggregation stream running — refreshes every 5 minutes.")
-    query.awaitTermination()
+    try:
+        create_gold_tables(spark)
+        batch_id = 0
+        # Recompute the daily snapshot on a timer, not on silver_orders.
+        # Customer/payment-only changes must trigger refreshes as well.
+        while True:
+            started = time.monotonic()
+            run_gold_refresh(spark, batch_id)
+            batch_id += 1
+            time.sleep(max(0, args.interval_seconds - (time.monotonic() - started)))
+    finally:
+        spark.stop()
 
 
 if __name__ == "__main__":

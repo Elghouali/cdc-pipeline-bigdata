@@ -141,10 +141,11 @@ spark-silver:                           ## Submit Silver streaming job (detached
 	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/silver_job.py > /tmp/cdc-silver.log 2>&1'
 	@echo "Silver job submitted (driver log: /tmp/cdc-silver.log in spark-master)"
 
-spark-gold:                             ## Submit Gold streaming job (detached)
+GOLD_REFRESH_SECONDS ?= 300
+spark-gold:                             ## Submit periodic Gold refresh job (detached)
 	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
-	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/gold_job.py > /tmp/cdc-gold.log 2>&1'
+	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/gold_job.py --interval-seconds $(GOLD_REFRESH_SECONDS) > /tmp/cdc-gold.log 2>&1'
 	@echo "Gold job submitted (driver log: /tmp/cdc-gold.log in spark-master)"
 
 spark-all:                              ## Submit all Spark jobs with waits for table creation

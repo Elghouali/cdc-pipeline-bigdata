@@ -267,14 +267,14 @@ LIMIT 10;
 
 ## Spark Jobs
 
-The default Compose configuration provisions three workers (one per 1 GiB streaming executor). Each job requests exactly two cores per executor and at most two total cores, so a single application cannot occupy the memory of multiple workers with one-core executors. The local/demo shuffle partition count is eight; tune it for larger workloads. For the Bronze/Silver-only CI test, two workers are sufficient; the workflow starts only the data stack and API, not dashboard/monitoring services. Override `SPARK_WORKER_REPLICAS` for local capacity, but keep at least one worker per concurrently running job. Driver output is captured inside `spark-master` at `/tmp/cdc-{bronze,silver,gold}.log`.
+The default Compose configuration provisions three workers (one per 1 GiB streaming executor). Each job requests exactly two cores per executor and at most two total cores, so a single application cannot occupy the memory of multiple workers with one-core executors. The local/demo shuffle partition count is eight; tune it for larger workloads. For the current Bronze/Silver/Gold CI test, three workers are required; the workflow starts only the data stack and API, not dashboard/monitoring services. Override `SPARK_WORKER_REPLICAS` for local capacity, but keep at least one worker per concurrently running job. Driver output is captured inside `spark-master` at `/tmp/cdc-{bronze,silver,gold}.log`.
 
 Submit jobs individually (detached — streaming jobs run indefinitely):
 
 ```bash
 make spark-bronze    # Kafka → Bronze Iceberg (append)
 make spark-silver    # Bronze → Silver (MERGE INTO)
-make spark-gold      # Silver → Gold (5-min aggregation)
+make spark-gold      # Silver → Gold (periodic aggregation)
 make spark-all       # All three, with waits for table creation
 ```
 
@@ -311,7 +311,15 @@ python -m unittest discover -s tests -v
 python scripts/cdc_smoke.py --output artifacts/cdc-smoke.json
 ```
 
-Live acceptance results are not yet verified for this revision. See the [GitHub Actions history](https://github.com/Elghouali/cdc-pipeline-bigdata/actions) for actual workflow outcomes.
+**Verified baseline (2026-11-26):** [CI run 45842497444](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45842497444) and [live integration run 45842497327](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45842497327) passed on commit `99e5cea`. The real customer INSERT, UPDATE and DELETE reached Bronze and the correct unique active/deleted state in Silver.
+
+| Operation | Bronze observation | Silver observation (subsequent polling) |
+|---|---:|---:|
+| INSERT | 22.722 s | 11.013 s |
+| UPDATE | 8.800 s | 36.519 s |
+| DELETE | 29.225 s | 28.243 s |
+
+These are sequential per-check observation times, not independent end-to-end latencies, percentiles, or throughput measurements. Gold customer lifecycle verification has been added; its results must be confirmed by a new workflow run.
 
 ## Development
 

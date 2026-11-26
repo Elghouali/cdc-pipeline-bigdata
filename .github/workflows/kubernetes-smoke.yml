@@ -8,6 +8,8 @@ on:
       - 'helm/**'
       - 'k8s/**'
       - 'sql/init.sql'
+      - 'hive/Dockerfile'
+      - 'security/trino-access-control.json'
       - '.github/workflows/kubernetes-smoke.yml'
   pull_request:
     paths:
@@ -23,7 +25,7 @@ jobs:
   source-broker:
     name: Isolated kind cluster — PostgreSQL and Kafka
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc
@@ -36,7 +38,9 @@ jobs:
           umask 077
           value=$(openssl rand -hex 24)
           echo "::add-mask::$value"
-          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value")
+          root=$(openssl rand -hex 24)
+          echo "::add-mask::$root"
+          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root")
           kubectl create namespace cdc-pipeline
           helm template cdc helm/cdc-pipeline "${args[@]}" > /tmp/cdc-full.yaml
           kubectl -n cdc-pipeline apply --dry-run=server -f /tmp/cdc-full.yaml
@@ -77,6 +81,41 @@ jobs:
           kafka kafka-topics --bootstrap-server cdc-kafka:9092 --create --if-not-exists --topic ci-smoke --partitions 1 --replication-factor 1
           printf '%s\n' cdc-cluster-smoke | kafka kafka-console-producer --bootstrap-server cdc-kafka:9092 --topic ci-smoke
           kafka kafka-console-consumer --bootstrap-server cdc-kafka:9092 --topic ci-smoke --from-beginning --max-messages 1 --timeout-ms 30000 | grep -Fx cdc-cluster-smoke
+      - name: Build and load Hive image
+        run: |
+          docker build -t cdc-hive-metastore:ci hive
+          kind load docker-image cdc-hive-metastore:ci --name cdc-smoke
+      - name: Deploy private object store and catalog database
+        run: |
+          set -euo pipefail
+          umask 077
+          # Render the next subset with the original ephemeral credential values.
+          value=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+          root=$(kubectl -n cdc-pipeline get secret cdc-secrets -o jsonpath='{.data.MARIADB_ROOT_PASSWORD}' | base64 -d)
+          echo "::add-mask::$value"
+          echo "::add-mask::$root"
+          args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-file trino.accessRules=security/trino-access-control.json --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value,mariadb.rootPassword=$root")
+          helm template cdc helm/cdc-pipeline "${args[@]}" --show-only templates/minio.yaml --show-only templates/mariadb.yaml | kubectl -n cdc-pipeline apply -f -
+          kubectl -n cdc-pipeline rollout status deployment/cdc-minio --timeout=300s
+          kubectl -n cdc-pipeline wait --for=condition=complete job/cdc-minio-init --timeout=300s
+          kubectl -n cdc-pipeline rollout status deployment/cdc-mariadb --timeout=300s
+          kubectl -n cdc-pipeline port-forward svc/cdc-minio 19000:9000 >/tmp/minio-forward.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          timeout 30 bash -ec 'until curl -fsS http://127.0.0.1:19000/minio/health/ready >/dev/null; do sleep 1; done'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19000/warehouse/)" = 403
+          helm template cdc helm/cdc-pipeline "${args[@]}" --show-only templates/hive-metastore.yaml --show-only templates/trino.yaml | kubectl -n cdc-pipeline apply -f -
+      - name: Verify Hive catalog and Trino authorization
+        run: |
+          set -euo pipefail
+          kubectl -n cdc-pipeline rollout status deployment/cdc-hive-metastore --timeout=480s
+          kubectl -n cdc-pipeline rollout status deployment/cdc-trino --timeout=480s
+          kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user api --execute 'SHOW SCHEMAS FROM iceberg'
+          if kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user api --execute 'CREATE SCHEMA iceberg.security_probe' >/tmp/denial.log 2>&1; then
+            echo "Unexpected schema creation permission"
+            exit 1
+          fi
+          grep -qi 'Access Denied' /tmp/denial.log
       - name: Collect cluster diagnostics
         if: always()
         run: |
@@ -87,6 +126,8 @@ jobs:
             kubectl -n cdc-pipeline logs deployment/"$component" --tail=100 >> artifacts/cluster-summary.txt 2>&1 || true
           done
           kubectl -n cdc-pipeline logs cdc-kafka-0 --tail=100 >> artifacts/cluster-summary.txt 2>&1 || true
+          # Avoid dumping catalog logs or env values that may contain credentials.
+          kubectl -n cdc-pipeline get deployments,jobs >> artifacts/cluster-summary.txt 2>&1 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

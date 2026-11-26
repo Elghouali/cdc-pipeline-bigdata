@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cdc-minio-data
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- include "cdc-pipeline.storageClass" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-minio
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: minio
+    {{- include "cdc-pipeline.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: tcp
+      port: {{ .Values.minio.service.apiPort }}
+      targetPort: tcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-minio
+  labels:
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      automountServiceAccountToken: false
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: minio
+          image: {{ .Values.minio.image | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: cdc-config
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cdc-secrets
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - name: tcp
+              containerPort: 9000
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: tcp}
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: cdc-minio-data}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cdc-minio-init
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 240
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: init
+          image: {{ .Values.minio.clientImage | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              until mc alias set local http://cdc-minio:{{ .Values.minio.service.apiPort }} "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do sleep 3; done
+              mc mb --ignore-existing "local/$MINIO_BUCKET"
+              mc anonymous set none "local/$MINIO_BUCKET"
+              echo "Private warehouse initialized"
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: cdc-config
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cdc-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: MINIO_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: cdc-config
+                  key: MINIO_BUCKET

@@ -8,15 +8,18 @@ The [Kubernetes source and broker smoke workflow](../.github/workflows/kubernete
 
 ## Local rendering
 
-From the repository root, use Helm 3 and supply all six required credential values from an external, protected values file plus the actual schema:
+From the repository root, use Helm 3 and supply all seven required credential values from an external, protected values file plus the actual schema:
 
 ```bash
 helm template cdc helm/cdc-pipeline --namespace cdc-pipeline \\
   -f /path/to/protected-values.yaml \\
-  --set-file postgres.initSql=sql/init.sql \\
+  --set-file postgres.initSql=sql/init.sql \
+  --set-file trino.accessRules=security/trino-access-control.json \\
   --set-file postgres.seedSql=sql/seed.sql
 kubectl kustomize k8s/overlays/dev
 kubectl kustomize k8s/overlays/prod
 ````
 
-The protected values file must supply postgres.password, minio.password, api.secretKey, api.adminPassword, mariadb.hivePassword and grafana.adminPassword. Never commit actual credentials. Rendered Secrets contain sensitive data. Source initialization occurs only on an empty PostgreSQL volume; this does not migrate an existing volume. Kafka supports one broker only; multi-broker replication and durable ZooKeeper are not implemented. Kustomize is render-only for runtime purposes and does not bootstrap the PostgreSQL schema yet. The full stack is not ready for EKS, GKE, AKS or a shared cluster.
+The protected values file must supply postgres.password, minio.password, api.secretKey, api.adminPassword, mariadb.hivePassword, mariadb.rootPassword and grafana.adminPassword. Never commit actual credentials. Rendered Secrets contain sensitive data. Source initialization occurs only on an empty PostgreSQL volume; this does not migrate an existing volume. Kafka supports one broker only; multi-broker replication and durable ZooKeeper are not implemented. Kustomize is render-only for runtime purposes and does not bootstrap the PostgreSQL schema yet. The full stack is not ready for EKS, GKE, AKS or a shared cluster.
+
+The [source/broker smoke run](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45894923792) passed. The extended smoke adds private object storage, MariaDB, Hive and Trino validation; runtime results are pending. Trino 435 supports environment-backed secrets (https://trinodb.github.io/docs.trino.io/435/security/secrets.html). The custom Hive image is built from hive/Dockerfile and loaded into kind; other clusters require a trusted registry image. Do not expose any experimental services publicly.

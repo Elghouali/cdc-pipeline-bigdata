@@ -52,6 +52,7 @@ kafka:
 # ── MinIO object storage ──────────────────────
 minio:
   image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+  clientImage: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
   rootUser: minioadmin
   # REQUIRED: supply via --set minio.password=...
   password: ""
@@ -72,7 +73,7 @@ minio:
 # ── MariaDB (Hive Metastore backend) ──────────
 mariadb:
   image: mariadb:10.11
-  # Defaulted in secrets.yaml but overridable.
+  rootPassword: ""
   hivePassword: ""
   persistence:
     size: 8Gi
@@ -83,6 +84,17 @@ mariadb:
     limits:
       cpu: "1"
       memory: "1Gi"
+
+hive:
+  # Build hive/Dockerfile and load into kind for CI; provide your own registry image for other clusters.
+  image: cdc-hive-metastore:ci
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
 
 # ── Spark ─────────────────────────────────────
 spark:
@@ -111,6 +123,8 @@ spark:
 trino:
   image: trinodb/trino:435
   workerReplicas: 1
+  # Supply the existing read-only policy via --set-file trino.accessRules=security/trino-access-control.json.
+  accessRules: ""
   service:
     port: 8080
   resources:

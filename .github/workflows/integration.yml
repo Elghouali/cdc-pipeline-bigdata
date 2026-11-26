@@ -11,7 +11,7 @@ on:
       benchmark_rows:
         description: Number of records for the bounded burst benchmark
         type: choice
-        options: ['100', '1000', '5000']
+        options: ['100', '1000', '5000', 'suite']
         default: '100'
   # Automatically recheck infrastructure changes on main.
   push:
@@ -169,7 +169,7 @@ jobs:
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
         timeout-minutes: 45
         env:
-          BENCHMARK_ROWS: ${{ inputs.benchmark_rows || '100' }}
+          BENCHMARK_ROWS: ${{ inputs.benchmark_rows || 'suite' }}
         run: |
           make spark-silver
           timeout 300 bash -c '
@@ -194,7 +194,15 @@ jobs:
           python scripts/maintenance_report.py
           lscpu
           free -m
-          python scripts/benchmark_cdc.py --rows "$BENCHMARK_ROWS" --output artifacts/cdc-benchmark.json
+          if [ "$BENCHMARK_ROWS" = suite ]; then
+            python scripts/benchmark_cdc.py --rows 100 --output artifacts/cdc-benchmark.json
+            for rows in 1000 5000; do
+              python scripts/reconcile.py --timeout 300
+              python scripts/benchmark_cdc.py --rows "$rows" --output "artifacts/cdc-benchmark-$rows.json"
+            done
+          else
+            python scripts/benchmark_cdc.py --rows "$BENCHMARK_ROWS" --output artifacts/cdc-benchmark.json
+          fi
           python scripts/reconcile.py --timeout 300
           if docker compose exec -T trino trino --user api --execute 'SELECT * FROM iceberg.analytics.quarantine_customers LIMIT 1' > /tmp/trino-denial.log 2>&1; then
             echo 'Unexpected quarantine access'
@@ -209,7 +217,7 @@ jobs:
           name: cdc-smoke-evidence
           path: |
             artifacts/cdc-smoke.json
-            artifacts/cdc-benchmark.json
+            artifacts/cdc-benchmark*.json
           if-no-files-found: warn
 
       - name: Capture Spark driver diagnostics

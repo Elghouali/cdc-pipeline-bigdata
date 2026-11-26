@@ -39,3 +39,7 @@ CI run [45886441837](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/r
 ### Kubernetes incremental validation
 
 The new Kubernetes source and broker smoke workflow creates an isolated kind cluster. It validates all rendered resources against the Kubernetes API, applies only the Helm source/broker subset, checks the real SQL schema and six-table publication, checks PostgreSQL persistence across pod replacement, and sends/consumes one Kafka message. The full chart remains experimental; this workflow does not install or validate the lakehouse, API or frontend in Kubernetes. Results are pending until the workflow actually passes. No cloud resources are provisioned.
+
+## Catalog extension (verification pending)
+
+The source/broker smoke passed in [run 45894923792](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45894923792). The next revision adds private MinIO bucket initialization, MariaDB persistence, locally built Hive Metastore, and a Trino coordinator with the existing read-only policy. The isolated workflow checks bucket anonymity denial, Hive catalog discovery and rejected schema writes. This is not yet a complete CDC workload in Kubernetes: Spark job supervision, Debezium registration, persistent checkpoints, API/frontend and monitoring remain outstanding. Kustomize remains render-only. The integration push runs now exercise 100/1000/5000-row isolated bursts; results must be read from completed runs before reporting performance.

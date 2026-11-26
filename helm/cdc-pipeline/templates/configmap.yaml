@@ -45,15 +45,31 @@ data:
     hive.s3.aws-access-key={{ .Values.minio.rootUser }}
     hive.s3.path-style-access=true
     hive.s3.ssl.enabled=false
-    {{- /* hive.s3.aws-secret-key is injected via MINIO_ROOT_PASSWORD secret env var. */}}
+    hive.s3.aws-secret-key=${ENV:MINIO_ROOT_PASSWORD}
+    iceberg.file-format=PARQUET
+    iceberg.compression-codec=SNAPPY
+    iceberg.target-max-file-size=128MB
+    iceberg.register-table-procedure.enabled=false
 
   # ── Hive site ────────────────────────────────
   hive-site.xml: |
     <?xml version="1.0"?>
     <configuration>
       <property>
-        <name>metastore.thrift.uris</name>
-        <value>thrift://cdc-hive-metastore:9083</value>
+        <name>hive.metastore.uris</name>
+        <value>thrift://0.0.0.0:9083</value>
+      </property>
+      <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>s3a://{{ .Values.minio.bucket }}/</value>
+      </property>
+      <property>
+        <name>fs.s3a.connection.ssl.enabled</name>
+        <value>false</value>
+      </property>
+      <property>
+        <name>hive.metastore.schema.verification</name>
+        <value>false</value>
       </property>
       <property>
         <name>fs.s3a.endpoint</name>

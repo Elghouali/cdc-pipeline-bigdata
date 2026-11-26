@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-trino-config
+data:
+  config.properties: |
+    coordinator=true
+    node-scheduler.include-coordinator=true
+    http-server.http.port=8080
+    discovery.uri=http://localhost:8080
+    query.max-memory=1GB
+    query.max-memory-per-node=1GB
+    memory.heap-headroom-per-node=256MB
+    query.max-run-time=2m
+  jvm.config: |
+    -server
+    -Xmx2G
+    -XX:+UseG1GC
+    -XX:+ExitOnOutOfMemoryError
+    -Djdk.attach.allowAttachSelf=true
+  node.properties: |
+    node.environment=development
+    node.id=cdc-trino
+    node.data-dir=/data/trino
+  access-control.properties: |
+    access-control.name=file
+    security.config-file=/etc/trino/access-control.json
+  access-control.json: |
+    {{- .Values.trino.accessRules | required "trino.accessRules is required; supply security/trino-access-control.json" | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-trino
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: trino
+    {{- include "cdc-pipeline.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: tcp
+      port: {{ .Values.trino.service.port }}
+      targetPort: tcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-trino
+  labels:
+    app.kubernetes.io/component: trino
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: trino
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: trino
+    spec:
+      automountServiceAccountToken: false
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-metastore
+          image: busybox:1.36
+          command: ["sh", "-ec", "until nc -z cdc-hive-metastore 9083; do sleep 3; done"]
+      containers:
+        - name: trino
+          image: {{ .Values.trino.image | quote }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: tcp
+              containerPort: 8080
+          env:
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cdc-secrets
+                  key: MINIO_ROOT_PASSWORD
+          readinessProbe:
+            httpGet: {path: /v1/status, port: tcp}
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.trino.resources | nindent 12 }}
+          volumeMounts:
+            - {name: conf, mountPath: /etc/trino/config.properties, subPath: config.properties, readOnly: true}
+            - {name: conf, mountPath: /etc/trino/jvm.config, subPath: jvm.config, readOnly: true}
+            - {name: conf, mountPath: /etc/trino/node.properties, subPath: node.properties, readOnly: true}
+            - {name: conf, mountPath: /etc/trino/access-control.properties, subPath: access-control.properties, readOnly: true}
+            - {name: conf, mountPath: /etc/trino/access-control.json, subPath: access-control.json, readOnly: true}
+            - {name: catalog, mountPath: /etc/trino/catalog/iceberg.properties, subPath: iceberg.properties, readOnly: true}
+      volumes:
+        - name: conf
+          configMap: {name: cdc-trino-config}
+        - name: catalog
+          configMap: {name: cdc-config}

@@ -8,6 +8,11 @@ on:
         description: Verify actual Bronze/Silver/Gold CDC delivery
         type: boolean
         default: true
+      benchmark_rows:
+        description: Number of records for the bounded burst benchmark
+        type: choice
+        options: ['100', '1000', '5000']
+        default: '100'
   # Automatically recheck infrastructure changes on main.
   push:
     branches: [main]
@@ -163,6 +168,8 @@ jobs:
       - name: Verify actual CDC lifecycle
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
         timeout-minutes: 45
+        env:
+          BENCHMARK_ROWS: ${{ inputs.benchmark_rows || '100' }}
         run: |
           make spark-silver
           timeout 300 bash -c '
@@ -185,7 +192,9 @@ jobs:
           curl -fsS http://localhost:8000/metrics | python -c 'import sys,time; values=[float(line.split()[1]) for line in sys.stdin if line.startswith("cdc_gold_last_success_timestamp_seconds ")]; assert len(values)==1 and 0 <= time.time()-values[0] < 900, values'
           python scripts/source_backup.py --verify --temporary
           python scripts/maintenance_report.py
-          python scripts/benchmark_cdc.py --rows 100 --output artifacts/cdc-benchmark.json
+          lscpu
+          free -m
+          python scripts/benchmark_cdc.py --rows "$BENCHMARK_ROWS" --output artifacts/cdc-benchmark.json
           python scripts/reconcile.py --timeout 300
           if docker compose exec -T trino trino --user api --execute 'SELECT * FROM iceberg.analytics.quarantine_customers LIMIT 1' > /tmp/trino-denial.log 2>&1; then
             echo 'Unexpected quarantine access'

@@ -65,6 +65,7 @@ metadata:
     app.kubernetes.io/component: broker
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   selector:
     app.kubernetes.io/name: kafka
   ports:
@@ -126,9 +127,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: KAFKA_BROKER_ID
-              # Derive from StatefulSet ordinal (kafka-0 → 1, kafka-1 → 2, …)
-              # so scaling replicas above 1 produces unique IDs.
-              value: "$(expr 1 + $(echo $POD_NAME | sed 's/.*-//'))"
+              value: "1"
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "zookeeper:2181"
             - name: KAFKA_ADVERTISED_LISTENERS

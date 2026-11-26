@@ -1,4 +1,7 @@
 {{- $component := "kafka" -}}
+{{- if ne (int .Values.kafka.replicas) 1 -}}
+{{- fail "Only a single Kafka broker is supported by this experimental chart" -}}
+{{- end -}}
 # ── Zookeeper (separate Deployment) ───────────
 apiVersion: apps/v1
 kind: Deployment
@@ -72,6 +75,7 @@ metadata:
     app.kubernetes.io/component: {{ $component }}
 spec:
   clusterIP: None
+  publishNotReadyAddresses: true
   selector:
     {{- include "cdc-pipeline.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: {{ $component }}
@@ -142,10 +146,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: KAFKA_BROKER_ID
-              # Derive broker ID from the StatefulSet ordinal (cdc-kafka-0 → 1,
-              # cdc-kafka-1 → 2, …) so scaling kafka.replicas above 1 produces
-              # unique IDs. A hardcoded "1" causes ID conflicts on multi-broker.
-              value: "$(expr 1 + $(echo $POD_NAME | sed 's/.*-//'))"
+              value: "1"
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "cdc-zookeeper:2181"
             - name: KAFKA_ADVERTISED_LISTENERS

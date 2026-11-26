@@ -319,8 +319,8 @@ jobs:
         run: |
           set -euo pipefail
           value=$(python -c 'import secrets; print(secrets.token_hex(24))')
-          helm lint helm/cdc-pipeline --set-string postgres.password="$value",minio.password="$value",api.secretKey="$value",api.adminPassword="$value",grafana.adminPassword="$value",mariadb.hivePassword="$value"
-          helm template cdc helm/cdc-pipeline --set-string postgres.password="$value",minio.password="$value",api.secretKey="$value",api.adminPassword="$value",grafana.adminPassword="$value",mariadb.hivePassword="$value" > /tmp/cdc-helm.yaml
+          helm lint helm/cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-string postgres.password="$value",minio.password="$value",api.secretKey="$value",api.adminPassword="$value",grafana.adminPassword="$value",mariadb.hivePassword="$value"
+          helm template cdc helm/cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-string postgres.password="$value",minio.password="$value",api.secretKey="$value",api.adminPassword="$value",grafana.adminPassword="$value",mariadb.hivePassword="$value" > /tmp/cdc-helm.yaml
           test -s /tmp/cdc-helm.yaml
       - name: Render Kustomize base and overlays
         run: |

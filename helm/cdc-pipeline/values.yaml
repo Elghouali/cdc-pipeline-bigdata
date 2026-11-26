@@ -17,6 +17,9 @@ postgres:
   user: postgres
   # REQUIRED: supply via --set postgres.password=... or a secrets file.
   password: ""
+  # Supply the source schema with --set-file postgres.initSql=sql/init.sql.
+  initSql: ""
+  seedSql: ""
   service:
     port: 5432
   persistence:

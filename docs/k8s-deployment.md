@@ -1,144 +1,22 @@
-# Kubernetes Deployment Guide
+# Experimental Kubernetes templates
 
-This guide covers deploying the CDC Medallion Lakehouse Pipeline to any
-Kubernetes cluster (EKS, GKE, AKS, or on-prem) using either the Helm chart
-or the Kustomize overlays.
+Docker Compose is the supported integration-tested local deployment. The Helm and Kustomize resources are incomplete and must not be installed as a full production stack. Missing lakehouse and connector services, credential wiring, supervision, and network policies are tracked in [deployment readiness](DEPLOYMENT_READINESS.md).
 
-## Prerequisites
+## Isolated runtime validation
 
-- A Kubernetes cluster (v1.25+)
-- `kubectl` configured to talk to the cluster
-- `helm` v3.10+ (for the Helm path)
-- A default `StorageClass` (or one supplied via `global.storageClass`)
-- For HPA: the `metrics-server` add-on installed in the cluster
-- For Ingress: an ingress controller (e.g. `ingress-nginx`)
+The [Kubernetes source and broker smoke workflow](../.github/workflows/kubernetes-smoke.yml) uses a disposable kind cluster with generated test credentials. It validates the complete rendered chart and Kustomize dev/prod overlays with server-side dry-run, then applies only the Helm PostgreSQL, Zookeeper and single Kafka broker resources with shared config and secrets. It checks logical WAL, the six-table publication, persistence across a PostgreSQL pod replacement, and Kafka message delivery. A successful run would validate that subset only. Review the Actions evidence before relying on it.
 
-## Option A — Helm
+## Local rendering
 
-The Helm chart lives in `helm/cdc-pipeline`. Three values are required and
-have no defaults (the chart fails fast if they are missing):
-
-- `postgres.password`
-- `minio.password`
-- `api.secretKey`
-
-### Install
+From the repository root, use Helm 3 and supply all six required credential values from an external, protected values file plus the actual schema:
 
 ```bash
-helm install cdc-pipeline helm/cdc-pipeline \
-  --namespace cdc-pipeline --create-namespace \
-  --set postgres.password=CHANGE_ME_PG \
-  --set minio.password=CHANGE_ME_MINIO \
-  --set api.secretKey=CHANGE_ME_APISECRET
-```
-
-For real environments, store secrets in a values file encrypted with
-[helm-secrets](https://github.com/jkroepke/helm-secrets) instead of `--set`:
-
-```bash
-helm secrets install cdc-pipeline helm/cdc-pipeline \
-  --namespace cdc-pipeline --create-namespace \
-  -f secrets.enc.yaml
-```
-
-### Enable Ingress
-
-```bash
-helm upgrade cdc-pipeline helm/cdc-pipeline \
-  --reuse-values \
-  --set ingress.enabled=true \
-  --set ingress.host=cdc.example.com \
-  --set ingress.tls.enabled=true
-```
-
-### Enable Pod Disruption Budgets
-
-```bash
-helm upgrade cdc-pipeline helm/cdc-pipeline \
-  --reuse-values --set podDisruptionBudget.enabled=true
-```
-
-### Upgrade
-
-```bash
-helm upgrade cdc-pipeline helm/cdc-pipeline --reuse-values
-```
-
-### Uninstall
-
-```bash
-helm uninstall cdc-pipeline --namespace cdc-pipeline
-```
-
-> PersistentVolumeClaims are intentionally **not** removed on uninstall.
-> Delete them manually if you want to discard data:
-> `kubectl delete pvc -n cdc-pipeline -l app.kubernetes.io/part-of=cdc-pipeline`
-
-### Render without installing
-
-```bash
-helm template cdc-pipeline helm/cdc-pipeline \
-  --set postgres.password=x --set minio.password=x --set api.secretKey=x
-```
-
-## Option B — Kustomize
-
-Plain manifests live in `k8s/base`, with environment overlays in
-`k8s/overlays/dev` and `k8s/overlays/prod`.
-
-Kustomize does not template secrets — create the `cdc-secrets` Secret first:
-
-```bash
-kubectl create namespace cdc-pipeline
-kubectl -n cdc-pipeline create secret generic cdc-secrets \
-  --from-literal=POSTGRES_PASSWORD=CHANGE_ME_PG \
-  --from-literal=MINIO_ROOT_PASSWORD=CHANGE_ME_MINIO \
-  --from-literal=API_SECRET_KEY=CHANGE_ME_APISECRET \
-  --from-literal=MARIADB_HIVE_PASSWORD=hive \
-  --from-literal=GRAFANA_ADMIN_PASSWORD=admin
-```
-
-### Deploy the dev overlay
-
-```bash
-kubectl apply -k k8s/overlays/dev
-```
-
-### Deploy the prod overlay
-
-The prod overlay scales replicas up, raises resource limits, and adds
-PodDisruptionBudgets for postgres and kafka.
-
-```bash
-kubectl apply -k k8s/overlays/prod
-```
-
-### Preview rendered manifests
-
-```bash
+helm template cdc helm/cdc-pipeline --namespace cdc-pipeline \\
+  -f /path/to/protected-values.yaml \\
+  --set-file postgres.initSql=sql/init.sql \\
+  --set-file postgres.seedSql=sql/seed.sql
 kubectl kustomize k8s/overlays/dev
-```
+kubectl kustomize k8s/overlays/prod
+````
 
-## Verifying the deployment
-
-```bash
-kubectl get pods -n cdc-pipeline
-kubectl get svc -n cdc-pipeline
-kubectl get hpa -n cdc-pipeline
-```
-
-All pods should reach `Running` / `Ready`. Startup order is handled by
-init containers (Kafka waits for Zookeeper, Spark workers wait for the
-Spark master).
-
-## Notes and scaling
-
-- Kafka runs as a single-broker StatefulSet for simplicity. To run a real
-  multi-broker cluster, raise `kafka.replicas`, give each pod a distinct
-  `broker.id` derived from the pod ordinal, and increase the replication
-  factor of the internal offsets/transaction-state topics.
-- Spark workers, the API, and the frontend are horizontally scalable.
-  The API and frontend ship with a HorizontalPodAutoscaler
-  (CPU target 70%, 1-5 replicas).
-- Persistent data uses `ReadWriteOnce` PVCs. On managed clouds this maps
-  to EBS / Persistent Disk / Azure Disk via the default StorageClass.
+The protected values file must supply postgres.password, minio.password, api.secretKey, api.adminPassword, mariadb.hivePassword and grafana.adminPassword. Never commit actual credentials. Rendered Secrets contain sensitive data. Source initialization occurs only on an empty PostgreSQL volume; this does not migrate an existing volume. Kafka supports one broker only; multi-broker replication and durable ZooKeeper are not implemented. Kustomize is render-only for runtime purposes and does not bootstrap the PostgreSQL schema yet. The full stack is not ready for EKS, GKE, AKS or a shared cluster.

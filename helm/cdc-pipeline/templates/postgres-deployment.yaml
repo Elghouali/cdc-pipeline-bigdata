@@ -22,14 +22,11 @@ metadata:
     {{- include "cdc-pipeline.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ $component }}
 data:
-  # Replace these placeholders by mounting real SQL via --set-file or a
-  # values override. The pipeline ships sql/init.sql and sql/seed.sql.
+  # SQL is supplied explicitly because the chart does not package the source files.
   01-init.sql: |
-    -- Schema bootstrap. Override with: --set-file postgres.initSql=sql/init.sql
-    SELECT 'init placeholder';
+    {{- .Values.postgres.initSql | required "postgres.initSql is required; use --set-file postgres.initSql=sql/init.sql" | nindent 4 }}
   02-seed.sql: |
-    -- Seed data. Override with: --set-file postgres.seedSql=sql/seed.sql
-    SELECT 'seed placeholder';
+    {{- .Values.postgres.seedSql | default "-- Optional seed data not supplied." | nindent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -95,12 +92,12 @@ spec:
               mountPath: /docker-entrypoint-initdb.d
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "$(POSTGRES_USER)", "-d", "$(POSTGRES_DB)"]
             initialDelaySeconds: 30
             periodSeconds: 15
           resources:

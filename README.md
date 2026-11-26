@@ -351,38 +351,9 @@ pre-commit run --all-files
 
 ---
 
-## Kubernetes Deployment (experimental templates — render only)
+## Kubernetes Deployment (experimental templates)
 
-**Do not apply these manifests to a production cluster.** They do not yet deploy all CDC services or prove a full Kubernetes lifecycle. Use Docker Compose for the tested local environment. See [deployment readiness](docs/DEPLOYMENT_READINESS.md).
-
-### Helm
-
-```bash
-# Render templates (dry-run)
-helm template cdc helm/cdc-pipeline \
-  --set postgres.password=<pg-pass> \
-  --set minio.password=<minio-pass> \
-  --set api.secretKey=<jwt-secret> \
-  --set grafana.adminPassword=<grafana-pass>
-
-# Install
-helm upgrade --install cdc helm/cdc-pipeline \
-  --namespace cdc-pipeline --create-namespace \
-  --set postgres.password=<pg-pass> \
-  --set minio.password=<minio-pass> \
-  --set api.secretKey=<jwt-secret> \
-  --set grafana.adminPassword=<grafana-pass>
-```
-
-### Kustomize
-
-```bash
-# Dev overlay (single replicas)
-kubectl apply -k k8s/overlays/dev
-
-# Prod overlay (scaled replicas, PDBs)
-kubectl apply -k k8s/overlays/prod
-```
+**Do not install the full chart or overlays in production.** The isolated kind workflow targets PostgreSQL and Kafka only; all other components remain unvalidated on Kubernetes. See [Kubernetes guide](docs/k8s-deployment.md) and [deployment readiness](docs/DEPLOYMENT_READINESS.md). Docker Compose remains the tested local stack.
 
 ---
 
@@ -565,3 +536,5 @@ Spark drivers use bounded local supervisors (`make spark-all`, `make spark-statu
 ### Container and benchmark evidence
 
 The frontend production image builds static assets and proxies API/SSE requests through Nginx. CI builds and scans both application images, publishes commit-specific tags, and validates manifest rendering. Image publication is blocked by critical findings and fixable high findings. Unfixed high findings remain release blockers; the reports are not a clean bill of health. See [deployment readiness](docs/DEPLOYMENT_READINESS.md) for evidence and blockers.
+
+Verified 100-row burst evidence: 17.168 s Bronze, 47.897 s Silver, 68.989 s Gold after source commit; source insert rate 619.528 rows/s (single transaction, not sustained pipeline throughput). See [run 45886441779](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45886441779) and [methodology](docs/DEPLOYMENT_READINESS.md).

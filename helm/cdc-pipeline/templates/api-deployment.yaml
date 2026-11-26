@@ -23,7 +23,7 @@ spec:
       {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: api
-          image: {{ .Values.api.image | default "ghcr.io/your-org/cdc-api:latest" | quote }}
+          image: {{ .Values.api.image | default "ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-api:latest" | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - name: http
@@ -37,6 +37,11 @@ spec:
                 secretKeyRef:
                   name: cdc-secrets
                   key: API_SECRET_KEY
+            - name: API_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cdc-secrets
+                  key: API_ADMIN_PASSWORD
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

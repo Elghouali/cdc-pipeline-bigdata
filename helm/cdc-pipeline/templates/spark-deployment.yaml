@@ -23,9 +23,12 @@ spec:
         - name: spark-master
           image: {{ .Values.spark.image | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
           env:
-            - name: SPARK_MODE
-              value: master
+            - name: SPARK_MASTER_HOST
+              value: cdc-spark-master
+            - name: SPARK_MASTER_WEBUI_PORT
+              value: "8080"
             - name: SPARK_MASTER_OPTS
               value: "-Dspark.deploy.defaultCores=4"
           ports:
@@ -35,7 +38,7 @@ spec:
               containerPort: 8080
           volumeMounts:
             - name: spark-conf
-              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              mountPath: /opt/spark/conf/spark-defaults.conf
               subPath: spark-defaults.conf
           readinessProbe:
             tcpSocket:
@@ -74,7 +77,7 @@ spec:
       port: 7077
       targetPort: cluster
     - name: ui
-      port: 8085
+      port: 8080
       targetPort: ui
 ---
 # ── Spark Worker ──────────────────────────────
@@ -109,11 +112,8 @@ spec:
         - name: spark-worker
           image: {{ .Values.spark.image | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://cdc-spark-master:7077"]
           env:
-            - name: SPARK_MODE
-              value: worker
-            - name: SPARK_MASTER_URL
-              value: "spark://cdc-spark-master:7077"
             - name: SPARK_WORKER_MEMORY
               value: {{ .Values.spark.worker.workerMemory | default "3G" | quote }}
             - name: SPARK_WORKER_CORES
@@ -123,7 +123,7 @@ spec:
               containerPort: 8081
           volumeMounts:
             - name: spark-conf
-              mountPath: /opt/bitnami/spark/conf/spark-defaults.conf
+              mountPath: /opt/spark/conf/spark-defaults.conf
               subPath: spark-defaults.conf
           readinessProbe:
             tcpSocket:

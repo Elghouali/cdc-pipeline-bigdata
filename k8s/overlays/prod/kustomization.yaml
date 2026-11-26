@@ -6,7 +6,7 @@ resources:
   - ../../base
   - pdb.yaml
 
-namePrefix: prod-
+namespace: cdc-pipeline
 
 commonLabels:
   app.kubernetes.io/environment: prod
@@ -15,7 +15,7 @@ replicas:
   - name: spark-worker
     count: 3
   - name: api
-    count: 3
+    count: 1
   - name: frontend
     count: 2
 

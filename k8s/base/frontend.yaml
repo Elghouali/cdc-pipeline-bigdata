@@ -19,18 +19,21 @@ spec:
       containers:
         - name: frontend
           image: ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-frontend:latest
+          env:
+            - name: API_UPSTREAM
+              value: api:8000
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 3000
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 15
             periodSeconds: 15

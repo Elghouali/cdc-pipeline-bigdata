@@ -18,10 +18,11 @@ spec:
     spec:
       containers:
         - name: spark-master
-          image: bitnami/spark:3.5
+          image: apache/spark:3.5.3-python3
+          command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
           env:
-            - name: SPARK_MODE
-              value: master
+            - name: SPARK_MASTER_WEBUI_PORT
+              value: "8080"
             - name: SPARK_MASTER_OPTS
               value: "-Dspark.deploy.defaultCores=4"
           ports:
@@ -58,7 +59,7 @@ spec:
       port: 7077
       targetPort: cluster
     - name: ui
-      port: 8085
+      port: 8080
       targetPort: ui
 ---
 apiVersion: apps/v1
@@ -88,14 +89,11 @@ spec:
             - until nc -z spark-master 7077; do echo waiting for spark-master; sleep 3; done
       containers:
         - name: spark-worker
-          image: bitnami/spark:3.5
+          image: apache/spark:3.5.3-python3
+          command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
           env:
-            - name: SPARK_MODE
-              value: worker
-            - name: SPARK_MASTER_URL
-              value: "spark://spark-master:7077"
             - name: SPARK_WORKER_MEMORY
-              value: "3G"
+              value: "1g"
             - name: SPARK_WORKER_CORES
               value: "2"
           ports:

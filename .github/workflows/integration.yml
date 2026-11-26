@@ -31,6 +31,8 @@ on:
       - 'scripts/reconcile.py'
       - 'scripts/wait_tables.py'
       - 'monitoring/**'
+      - 'frontend/**'
+      - 'scripts/benchmark_cdc.py'
       - 'spark_tests/**'
       - 'api/**'
       - 'frontend/src/**'
@@ -102,7 +104,7 @@ jobs:
         # Three independent executors for Bronze, Silver, and Gold.
         # Avoid unrelated dashboard/monitoring memory pressure on CI runners.
         run: |
-          docker compose up -d --scale spark-worker=3 postgres kafka-connect spark-master spark-worker trino api
+          docker compose up -d --scale spark-worker=3 postgres kafka-connect spark-master spark-worker trino api frontend
 
       - name: Wait for services to be healthy
         run: |
@@ -123,6 +125,14 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9000/warehouse/)" = 403
           timeout 60 bash -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/events/stream)" = 401 ]; do sleep 2; done'
           docker compose ps --format json | python -c 'import sys,json; rows=[json.loads(line) for line in sys.stdin if line.strip()]; rows=[item for row in rows for item in (row if isinstance(row,list) else [row])]; publishers=[p for row in rows for p in (row.get("Publishers") or []) if p.get("PublishedPort")]; assert publishers and all(p.get("URL") in ("127.0.0.1", "::1") for p in publishers), publishers'
+
+      - name: Verify production frontend and API proxy
+        run: |
+          timeout 90 bash -c 'until curl -fsS http://localhost:3000/healthz >/dev/null; do sleep 2; done'
+          curl -fsS http://localhost:3000/ | grep -qi '<html'
+          curl -fsS http://localhost:3000/orders | grep -qi '<html'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/events/stream)" = 401
+          curl -fsS http://localhost:3000/api/health >/dev/null
 
       - name: Verify Trino read-only enforcement
         run: |
@@ -175,6 +185,8 @@ jobs:
           curl -fsS http://localhost:8000/metrics | python -c 'import sys,time; values=[float(line.split()[1]) for line in sys.stdin if line.startswith("cdc_gold_last_success_timestamp_seconds ")]; assert len(values)==1 and 0 <= time.time()-values[0] < 900, values'
           python scripts/source_backup.py --verify --temporary
           python scripts/maintenance_report.py
+          python scripts/benchmark_cdc.py --rows 100 --output artifacts/cdc-benchmark.json
+          python scripts/reconcile.py --timeout 300
           if docker compose exec -T trino trino --user api --execute 'SELECT * FROM iceberg.analytics.quarantine_customers LIMIT 1' > /tmp/trino-denial.log 2>&1; then
             echo 'Unexpected quarantine access'
             exit 1
@@ -186,7 +198,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cdc-smoke-evidence
-          path: artifacts/cdc-smoke.json
+          path: |
+            artifacts/cdc-smoke.json
+            artifacts/cdc-benchmark.json
           if-no-files-found: warn
 
       - name: Capture Spark driver diagnostics

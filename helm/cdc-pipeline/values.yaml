@@ -48,7 +48,7 @@ kafka:
 
 # ── MinIO object storage ──────────────────────
 minio:
-  image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+  image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
   rootUser: minioadmin
   # REQUIRED: supply via --set minio.password=...
   password: ""
@@ -70,7 +70,7 @@ minio:
 mariadb:
   image: mariadb:10.11
   # Defaulted in secrets.yaml but overridable.
-  hivePassword: hive
+  hivePassword: ""
   persistence:
     size: 8Gi
   resources:
@@ -83,7 +83,7 @@ mariadb:
 
 # ── Spark ─────────────────────────────────────
 spark:
-  image: bitnami/spark:3.5
+  image: apache/spark:3.5.3-python3
   master:
     resources:
       requests:
@@ -93,8 +93,8 @@ spark:
         cpu: "2"
         memory: "2Gi"
   worker:
-    replicas: 1
-    workerMemory: 3G
+    replicas: 3
+    workerMemory: 1g
     workerCores: 2
     resources:
       requests:
@@ -120,10 +120,11 @@ trino:
 
 # ── FastAPI backend ───────────────────────────
 api:
-  image: ghcr.io/your-org/cdc-api:latest
+  image: ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-api:latest
   replicas: 1
   # REQUIRED: supply via --set api.secretKey=...
   secretKey: ""
+  adminPassword: ""
   service:
     port: 8000
   resources:
@@ -134,14 +135,14 @@ api:
       cpu: "1"
       memory: "1Gi"
   autoscaling:
-    enabled: true
+    enabled: false
     minReplicas: 1
-    maxReplicas: 5
+    maxReplicas: 1
     targetCPUUtilizationPercentage: 70
 
 # ── React frontend ────────────────────────────
 frontend:
-  image: ghcr.io/your-org/cdc-frontend:latest
+  image: ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-frontend:latest
   replicas: 1
   service:
     port: 80

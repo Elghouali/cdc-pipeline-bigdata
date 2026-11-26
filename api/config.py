@@ -1,21 +1,11 @@
 """Centralized environment-driven configuration for the CDC API service."""
 
-import logging
 import os
 from dataclasses import dataclass
 
-_config_logger = logging.getLogger("cdc-api.config")
-
-_INSECURE_DEFAULTS = {"change_me_secret", "change_me_api_jwt_secret_key", "secret"}
-
-
-def _warn_if_insecure(name: str, value: str) -> None:
-    if value.lower() in _INSECURE_DEFAULTS or len(value) < 16:
-        _config_logger.warning(
-            "SECURITY: %s looks like a placeholder or is too short (< 16 chars). "
-            "Set a strong random value in .env before deploying.",
-            name,
-        )
+def _require_strong_secret(name: str, value: str, minimum: int) -> None:
+    if len(value) < minimum or value.lower().startswith(("change_me", "changeme")):
+        raise RuntimeError(f"{name} must be a non-placeholder secret of {minimum}+ chars.")
 
 
 def _split_csv(value: str) -> list[str]:
@@ -57,11 +47,11 @@ class Settings:
             spark_history_url=os.getenv(
                 "SPARK_HISTORY_URL", "http://spark-master:18080"
             ).rstrip("/"),
-            secret_key=os.getenv("API_SECRET_KEY", "change_me_secret"),
+            secret_key=os.getenv("API_SECRET_KEY", ""),
             access_token_expire_minutes=int(
                 os.getenv("API_ACCESS_TOKEN_EXPIRE_MINUTES", "60")
             ),
-            admin_password=os.getenv("API_ADMIN_PASSWORD", "admin"),
+            admin_password=os.getenv("API_ADMIN_PASSWORD", ""),
             cors_origins=tuple(
                 _split_csv(
                     os.getenv(
@@ -77,9 +67,13 @@ class Settings:
         )
 
     def validate_security(self) -> None:
-        """Emit warnings for any settings that look like insecure placeholders."""
-        _warn_if_insecure("API_SECRET_KEY", self.secret_key)
-        _warn_if_insecure("API_ADMIN_PASSWORD", self.admin_password)
+        """Fail startup rather than run with insecure signing or login secrets."""
+        _require_strong_secret("API_SECRET_KEY", self.secret_key, 32)
+        _require_strong_secret("API_ADMIN_PASSWORD", self.admin_password, 16)
+        if self.jwt_algorithm != "HS256":
+            raise RuntimeError("Only HS256 is configured for this deployment.")
+        if not 1 <= self.access_token_expire_minutes <= 120:
+            raise RuntimeError("API token lifetime must be between 1 and 120 minutes.")
 
 
 settings = Settings.load()

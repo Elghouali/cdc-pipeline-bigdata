@@ -49,6 +49,8 @@ def test_validate_sql_allows_reads(sql: str) -> None:
         "/* comment */ DROP TABLE t",
         "-- comment\nDROP TABLE t",
         "CALL some_procedure()",
+        "SET SESSION query_max_run_time = '1h'",
+        "EXECUTE prepared_query",
     ],
 )
 def test_validate_sql_blocks_mutations(sql: str) -> None:

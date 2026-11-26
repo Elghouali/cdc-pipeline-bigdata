@@ -6,7 +6,7 @@
     "database.hostname":            "postgres",
     "database.port":                "5432",
     "database.user":                "debezium",
-    "database.password":            "debezium",
+    "database.password":            "${env:DEBEZIUM_PASSWORD}",
     "database.dbname":              "ecommerce",
     "database.server.name":         "cdc",
 

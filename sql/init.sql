@@ -90,7 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_returns_order_id        ON returns(order_id);
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'debezium') THEN
-        CREATE USER debezium WITH PASSWORD 'debezium' REPLICATION LOGIN;
+        CREATE USER debezium WITH REPLICATION LOGIN;
     END IF;
 END
 $$;

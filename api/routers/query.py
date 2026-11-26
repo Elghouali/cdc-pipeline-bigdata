@@ -3,10 +3,12 @@
 Caller: api/main.py. Endpoint: POST /api/query (authentication required).
 """
 
+import asyncio
 import json
 import logging
 import re
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 
 from auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -66,6 +68,8 @@ def _validate_sql(sql: str) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Multiple statements are not allowed.",
         )
+    if not re.match(r"^(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\b", cleaned, re.IGNORECASE):
+        raise HTTPException(status_code=400, detail="Only read queries are permitted.")
     blocked = _BLOCKED_PATTERN.search(_strip_string_literals(cleaned))
     if blocked is not None:
         raise HTTPException(
@@ -78,13 +82,22 @@ def _validate_sql(sql: str) -> str:
 
 async def _ndjson_stream(sql: str) -> AsyncIterator[bytes]:
     try:
-        async for row in stream_query(sql):
-            yield (json.dumps(row, default=str) + "\n").encode("utf-8")
+        async with asyncio.timeout(60), aclosing(stream_query(sql)) as rows:
+            count = 0
+            async for row in rows:
+                if count >= 10000:
+                    yield b'{"error":"Result limit exceeded (10000 rows)."}\n'
+                    return
+                count += 1
+                yield (json.dumps(row, default=str) + "\n").encode("utf-8")
+    except TimeoutError:
+        yield b'{"error":"Query exceeded the 60 second deadline."}\n'
     except TrinoError as exc:
-        yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
-    except Exception as exc:
+        logger.warning("Trino query failed: %s", exc)
+        yield b'{"error":"Query failed or access denied."}\n'
+    except Exception:
         logger.exception("Unexpected error while streaming query results.")
-        yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
+        yield b'{"error":"Internal query error."}\n'
 
 
 @router.post("/query")

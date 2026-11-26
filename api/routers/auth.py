@@ -5,20 +5,48 @@ GET /auth/me.
 """
 
 import logging
+import time
+from collections import OrderedDict
 
 from auth import create_access_token, get_current_user
 from db import get_pool, verify_password
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from models import LoginRequest, Token, User
 
 logger = logging.getLogger("cdc-api.auth-router")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Per-process fixed-window guard; a shared gateway is required across replicas.
+_ATTEMPTS: OrderedDict[str, tuple[float, int]] = OrderedDict()
+_MAX_CLIENTS = 4096
+_WINDOW_SECONDS = 60
+_MAX_ATTEMPTS = 10
+
+
+def check_login_rate(client: str) -> None:
+    now = time.monotonic()
+    while _ATTEMPTS:
+        oldest = next(iter(_ATTEMPTS))
+        if now - _ATTEMPTS[oldest][0] < _WINDOW_SECONDS:
+            break
+        _ATTEMPTS.popitem(last=False)
+    started, count = _ATTEMPTS.get(client, (now, 0))
+    if count >= _MAX_ATTEMPTS or (
+        client not in _ATTEMPTS and len(_ATTEMPTS) >= _MAX_CLIENTS
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": "60"},
+        )
+    _ATTEMPTS[client] = (started, count + 1)
+
 
 @router.post("/login", response_model=Token)
-async def login(body: LoginRequest) -> Token:
+async def login(body: LoginRequest, request: Request) -> Token:
     """Validate credentials against api_users and return a signed JWT."""
+    check_login_rate(request.client.host if request.client else "unknown")
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(

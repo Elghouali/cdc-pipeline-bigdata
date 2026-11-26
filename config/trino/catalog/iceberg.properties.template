@@ -20,5 +20,5 @@ iceberg.file-format=PARQUET
 iceberg.compression-codec=SNAPPY
 iceberg.target-max-file-size=128MB
 
-# Allow DROP TABLE / DROP SCHEMA operations
-iceberg.register-table-procedure.enabled=true
+# Do not register arbitrary external tables through Trino
+iceberg.register-table-procedure.enabled=false

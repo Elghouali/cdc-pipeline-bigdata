@@ -15,6 +15,11 @@ on:
       - 'hive/Dockerfile'
       - 'docker-compose.yml'
       - 'config/hive/**'
+      - 'config/trino/**'
+      - 'security/**'
+      - 'sql/**'
+      - 'config/debezium-connector.json'
+      - 'scripts/register_connector.sh'
       - 'config/spark/**'
       - 'spark_jobs/**'
       - 'scripts/cdc_smoke.py'
@@ -52,6 +57,7 @@ jobs:
           cat > .env << 'EOF'
           POSTGRES_USER=postgres
           POSTGRES_PASSWORD=ci_postgres_pass
+          DEBEZIUM_PASSWORD=ci_replication_password_only
           MINIO_ROOT_USER=minioadmin
           MINIO_ROOT_PASSWORD=ci_minio_pass
           MARIADB_ROOT_PASSWORD=ci_root_pass
@@ -59,7 +65,7 @@ jobs:
           SUPERSET_SECRET_KEY=ci_superset_secret_key_for_testing_only
           SUPERSET_ADMIN_PASSWORD=ci_superset_admin
           API_SECRET_KEY=ci_api_secret_key_for_testing_only
-          API_ADMIN_PASSWORD=ci_admin_pass
+          API_ADMIN_PASSWORD=ci_admin_password_for_testing_only
           GRAFANA_ADMIN_PASSWORD=ci_grafana_pass
           SLACK_WEBHOOK_URL=https://hooks.slack.com/services/CI_PLACEHOLDER
           EOF
@@ -106,6 +112,15 @@ jobs:
           timeout 60 bash -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/events/stream)" = 401 ]; do sleep 2; done'
           docker compose ps --format json | python -c 'import sys,json; rows=[json.loads(line) for line in sys.stdin if line.strip()]; rows=[item for row in rows for item in (row if isinstance(row,list) else [row])]; publishers=[p for row in rows for p in (row.get("Publishers") or []) if p.get("PublishedPort")]; assert publishers and all(p.get("URL") in ("127.0.0.1", "::1") for p in publishers), publishers'
 
+      - name: Verify Trino read-only enforcement
+        run: |
+          docker compose exec -T trino trino --user api --execute 'SELECT 1'
+          if docker compose exec -T trino trino --user api --execute 'CREATE SCHEMA iceberg.security_probe' > /tmp/trino-denial.log 2>&1; then
+            echo 'Unexpected schema creation permission'
+            exit 1
+          fi
+          grep -qi 'Access Denied' /tmp/trino-denial.log
+
       - name: Register Debezium connector
         run: make connector-register
 
@@ -135,6 +150,11 @@ jobs:
           '
           make spark-gold GOLD_REFRESH_SECONDS=30
           python scripts/cdc_smoke.py --gold --timeout 300 --gold-timeout 600 --output artifacts/cdc-smoke.json
+          if docker compose exec -T trino trino --user api --execute 'SELECT raw_payload FROM iceberg.analytics.bronze_customers_cdc LIMIT 1' > /tmp/trino-denial.log 2>&1; then
+            echo 'Unexpected raw payload access'
+            exit 1
+          fi
+          grep -qi 'Access Denied' /tmp/trino-denial.log
 
       - name: Upload CDC evidence
         if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}

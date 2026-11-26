@@ -1,41 +1,59 @@
 {
-  "_comment": "Trino file-based access control. Mounted at /etc/trino/access-control.json and referenced by config/trino/config.properties via access-control.config-file.",
   "catalogs": [
     {
-      "user": ".*",
       "catalog": "iceberg",
-      "allow": "all"
+      "allow": "read-only"
     },
     {
-      "user": ".*",
       "catalog": "system",
       "allow": "read-only"
     },
     {
-      "user": ".*",
-      "catalog": "mariadb",
-      "allow": "none"
-    },
-    {
-      "user": ".*",
       "catalog": ".*",
-      "allow": "read-only"
+      "allow": "none"
     }
   ],
   "schemas": [
     {
-      "user": ".*",
-      "catalog": "iceberg",
-      "schema": ".*",
       "owner": false
     }
   ],
   "tables": [
     {
+      "user": "api",
+      "catalog": "iceberg",
+      "schema": "analytics",
+      "table": "bronze_.*_cdc",
+      "privileges": [
+        "SELECT"
+      ],
+      "columns": [
+        {
+          "name": "raw_payload",
+          "allow": false
+        },
+        {
+          "name": "before_payload",
+          "allow": false
+        },
+        {
+          "name": "after_payload",
+          "allow": false
+        },
+        {
+          "name": "kafka_key",
+          "allow": false
+        }
+      ]
+    },
+    {
+      "user": "api",
       "catalog": "iceberg",
       "schema": "analytics",
       "table": "silver_customers",
-      "privileges": ["SELECT"],
+      "privileges": [
+        "SELECT"
+      ],
       "columns": [
         {
           "name": "email",
@@ -43,7 +61,37 @@
         },
         {
           "name": "name",
-          "mask": "CONCAT(SUBSTR(name, 1, 1), '***')"
+          "mask": "'***'"
+        }
+      ]
+    },
+    {
+      "user": "api",
+      "catalog": "iceberg",
+      "schema": "analytics",
+      "table": "gold_customers",
+      "privileges": [
+        "SELECT"
+      ],
+      "columns": [
+        {
+          "name": "name",
+          "mask": "'***'"
+        }
+      ]
+    },
+    {
+      "user": "api",
+      "catalog": "iceberg",
+      "schema": "analytics",
+      "table": "gold_orders",
+      "privileges": [
+        "SELECT"
+      ],
+      "columns": [
+        {
+          "name": "customer_name",
+          "mask": "'***'"
         }
       ]
     },
@@ -51,13 +99,18 @@
       "catalog": "iceberg",
       "schema": ".*",
       "table": ".*",
-      "privileges": ["SELECT", "SHOW_STATS"]
+      "privileges": [
+        "SELECT"
+      ]
     },
     {
       "catalog": "system",
       "schema": ".*",
       "table": ".*",
-      "privileges": ["SELECT"]
+      "privileges": [
+        "SELECT"
+      ]
     }
-  ]
+  ],
+  "procedures": []
 }

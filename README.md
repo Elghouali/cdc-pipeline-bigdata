@@ -305,7 +305,7 @@ Silver uses Kafka partition/offset watermarks to reject stale updates and retain
 
 ### Local security boundary
 
-Compose host ports bind to loopback only. For remote development use SSH port forwarding, not public database, Kafka, Trino or object-storage ports. The warehouse initializer explicitly removes anonymous bucket access, including on an existing warehouse. The CDC browser feed requires a bearer JWT and exposes only event metadata (topic, operation and timestamp), never customer/payment payloads. Connections expire at JWT expiry or after five minutes and reconnect using the token. This is containment for a local/demo stack, not complete production security: Trino engine authorization, secret rotation, TLS and network segmentation remain outstanding. See [security hardening notes](docs/SECURITY_HARDENING.md).
+Compose host ports bind to loopback only. For remote development use SSH port forwarding, not public database, Kafka, Trino or object-storage ports. The warehouse initializer explicitly removes anonymous bucket access, including on an existing warehouse. The CDC browser feed requires a bearer JWT and exposes only event metadata (topic, operation and timestamp), never customer/payment payloads. Connections expire at JWT expiry or after five minutes and reconnect using the token. This is containment for a local/demo stack, not complete production security: Trino read-only authorization and credential checks are configured; verify the latest integration run. Production identity authentication, full least-privilege roles, secret rotation, TLS and network segmentation remain outstanding. See [security hardening notes](docs/SECURITY_HARDENING.md).
 
 ## CDC acceptance testing
 

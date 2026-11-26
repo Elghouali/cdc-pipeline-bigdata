@@ -128,9 +128,7 @@ def classify_events(parsed: DataFrame, table: str) -> DataFrame:
     return parsed.withColumn("rejection_reason", reason)
 
 
-def append_unseen(
-    spark: SparkSession, target: str, incoming: DataFrame
-) -> None:
+def append_unseen(spark: SparkSession, target: str, incoming: DataFrame) -> None:
     spark.catalog.refreshTable(target)
     fresh = unseen_events(incoming, spark.table(target))
     if not fresh.isEmpty():

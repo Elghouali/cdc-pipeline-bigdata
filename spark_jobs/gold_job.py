@@ -36,24 +36,16 @@ logger = logging.getLogger("gold_job")
 CATALOG = "iceberg"
 SCHEMA = "analytics"
 MONEY_COLUMNS = {
-    "gold_customers": [
-        "total_spent",
-        "avg_order_value"
-    ],
+    "gold_customers": ["total_spent", "avg_order_value"],
     "gold_orders": ["order_total"],
-    "gold_sales_facts": [
-        "gross_revenue",
-        "net_revenue",
-        "avg_order_value"
-    ],
+    "gold_sales_facts": ["gross_revenue", "net_revenue", "avg_order_value"],
     "gold_payments_summary": [
         "total_amount",
         "completed_amount",
         "refunded_amount",
-        "pending_amount"
-    ]
+        "pending_amount",
+    ],
 }
-
 
 
 def get_spark() -> SparkSession:
@@ -181,7 +173,9 @@ def create_gold_tables(spark: SparkSession) -> None:
         schema = spark.table(f"{CATALOG}.{SCHEMA}.{table}").schema
         for column in columns:
             if schema[column].dataType.simpleString() != "decimal(28,2)":
-                raise RuntimeError(f"{table}.{column} requires explicit decimal migration")
+                raise RuntimeError(
+                    f"{table}.{column} requires explicit decimal migration"
+                )
     logger.info("All Gold tables ready.")
 
 
@@ -211,7 +205,8 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
     )
 
     pay_agg = (
-        p.filter(F.col("status") == "completed").join(
+        p.filter(F.col("status") == "completed")
+        .join(
             o.select(F.col("id").alias("oid"), "customer_id"),
             p.order_id == F.col("oid"),
         )
@@ -233,7 +228,9 @@ def build_gold_customers(spark: SparkSession) -> DataFrame:
             F.coalesce(order_agg.delivered_orders, F.lit(0)).alias("delivered_orders"),
             F.coalesce(order_agg.cancelled_orders, F.lit(0)).alias("cancelled_orders"),
             F.coalesce(order_agg.returned_orders, F.lit(0)).alias("returned_orders"),
-            F.coalesce(pay_agg.total_spent, F.lit(0).cast("decimal(28,2)")).alias("total_spent"),
+            F.coalesce(pay_agg.total_spent, F.lit(0).cast("decimal(28,2)")).alias(
+                "total_spent"
+            ),
             # avg_order_value = total_spent / total_orders, not AVG(payment.amount):
             # one order can span multiple payments so AVG(amount) would be wrong.
             F.when(
@@ -307,7 +304,9 @@ def build_gold_orders(spark: SparkSession) -> DataFrame:
             F.col("city").alias("customer_city"),
             o.status,
             o.channel,
-            F.coalesce("order_total", F.lit(0).cast("decimal(28,2)")).alias("order_total"),
+            F.coalesce("order_total", F.lit(0).cast("decimal(28,2)")).alias(
+                "order_total"
+            ),
             F.coalesce("item_count", F.lit(0)).alias("item_count"),
             F.col("pay_method").alias("payment_method"),
             F.col("pay_status").alias("payment_status"),
@@ -403,13 +402,19 @@ def build_gold_payments_summary(spark: SparkSession) -> DataFrame:
             F.count("id").alias("transaction_count"),
             F.sum("amount").alias("total_amount"),
             F.sum(
-                F.when(F.col("status") == "completed", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
+                F.when(F.col("status") == "completed", F.col("amount")).otherwise(
+                    F.lit(0).cast("decimal(28,2)")
+                )
             ).alias("completed_amount"),
             F.sum(
-                F.when(F.col("status") == "refunded", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
+                F.when(F.col("status") == "refunded", F.col("amount")).otherwise(
+                    F.lit(0).cast("decimal(28,2)")
+                )
             ).alias("refunded_amount"),
             F.sum(
-                F.when(F.col("status") == "pending", F.col("amount")).otherwise(F.lit(0).cast("decimal(28,2)"))
+                F.when(F.col("status") == "pending", F.col("amount")).otherwise(
+                    F.lit(0).cast("decimal(28,2)")
+                )
             ).alias("pending_amount"),
         )
         .withColumn("_updated_at", F.current_timestamp())

@@ -211,9 +211,8 @@ def validate_rows(df: DataFrame, table: str) -> None:
     Delete payloads may contain only a primary key (Postgres replica identity).
     Non-delete source fields are all NOT NULL in the source schema.
     """
-    invalid = (
-        F.col("id").isNull()
-        | ~F.coalesce(F.col("_op").isin("c", "r", "u", "d"), F.lit(False))
+    invalid = F.col("id").isNull() | ~F.coalesce(
+        F.col("_op").isin("c", "r", "u", "d"), F.lit(False)
     )
     missing = F.lit(False)
     for column, _ in SILVER_DEF[table]["cols"]:

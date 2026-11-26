@@ -39,9 +39,7 @@ def gold_refresh_timestamp(path: Path) -> float:
     return 0.0
 
 
-def render_metrics(
-    master: dict, connector: dict, gold_timestamp: float = 0.0
-) -> str:
+def render_metrics(master: dict, connector: dict, gold_timestamp: float = 0.0) -> str:
     apps = master.get("activeapps") or []
     tasks = connector.get("tasks") or []
     lines = [

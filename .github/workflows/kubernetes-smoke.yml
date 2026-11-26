@@ -39,14 +39,16 @@ jobs:
           args=(--namespace cdc-pipeline --set-file postgres.initSql=sql/init.sql --set-string "postgres.password=$value,minio.password=$value,api.secretKey=$value,api.adminPassword=$value,grafana.adminPassword=$value,mariadb.hivePassword=$value")
           kubectl create namespace cdc-pipeline
           helm template cdc helm/cdc-pipeline "${args[@]}" > /tmp/cdc-full.yaml
-          kubectl apply --dry-run=server -f /tmp/cdc-full.yaml
+          kubectl -n cdc-pipeline apply --dry-run=server -f /tmp/cdc-full.yaml
           for overlay in dev prod; do
             kubectl apply --dry-run=server -k "k8s/overlays/$overlay"
           done
           helm template cdc helm/cdc-pipeline "${args[@]}" \
             --show-only templates/configmap.yaml --show-only templates/secrets.yaml \
             --show-only templates/postgres-deployment.yaml --show-only templates/kafka-statefulset.yaml > /tmp/cdc-subset.yaml
-          kubectl apply -f /tmp/cdc-subset.yaml
+          kubectl -n cdc-pipeline apply -f /tmp/cdc-subset.yaml
+          kubectl -n cdc-pipeline get deployment cdc-postgres cdc-zookeeper
+          kubectl -n cdc-pipeline get statefulset cdc-kafka
           rm -f /tmp/cdc-full.yaml /tmp/cdc-subset.yaml
       - name: Verify source initialization and logical replication
         run: |
@@ -59,7 +61,11 @@ jobs:
           test "$(pg "SELECT count(*) FROM pg_publication_tables WHERE pubname='debezium_pub' AND schemaname='public'")" = 6
           test "$(pg "SELECT rolreplication FROM pg_roles WHERE rolname='debezium'")" = t
           pg 'CREATE TABLE ci_persistence_probe (id integer PRIMARY KEY); INSERT INTO ci_persistence_probe VALUES (1);'
+          old_uid=$(kubectl -n cdc-pipeline get pod -l app.kubernetes.io/component=postgres -o jsonpath='{.items[0].metadata.uid}')
           kubectl -n cdc-pipeline delete pod -l app.kubernetes.io/component=postgres --timeout=120s
+          timeout 180 bash -ec '
+            until new_uid=$(kubectl -n cdc-pipeline get pod -l app.kubernetes.io/component=postgres -o jsonpath="{.items[0].metadata.uid}" 2>/dev/null) && [ -n "$new_uid" ] && [ "$new_uid" != "$1" ]; do sleep 2; done
+          ' sh "$old_uid"
           kubectl -n cdc-pipeline rollout status deployment/cdc-postgres --timeout=300s
           kubectl -n cdc-pipeline wait --for=condition=Ready pod -l app.kubernetes.io/component=postgres --timeout=180s
           test "$(pg 'SELECT count(*) FROM ci_persistence_probe')" = 1

@@ -1,0 +1,123 @@
+{{- if .Values.connect.enabled }}
+{{- $source := .Values.connect.config | required "connect.config is required" | fromJson }}
+{{- $cfg := $source.config }}
+{{- $_ := set $cfg "database.hostname" "cdc-postgres" }}
+{{- $_ := set $cfg "database.dbname" .Values.postgres.database }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-connector-config
+data:
+  connector.json: {{ $cfg | toJson | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-kafka-connect
+spec:
+  selector:
+    app.kubernetes.io/component: connect
+    {{- include "cdc-pipeline.selectorLabels" . | nindent 4 }}
+  ports:
+    - {name: http, port: 8083, targetPort: http}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-kafka-connect
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: connect
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: connect
+    spec:
+      automountServiceAccountToken: false
+      {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: connect
+          image: {{ .Values.connect.image | quote }}
+          env:
+            - {name: BOOTSTRAP_SERVERS, value: "cdc-kafka:9092"}
+            - {name: GROUP_ID, value: cdc-connect-group}
+            - {name: CONFIG_STORAGE_TOPIC, value: debezium_connect_config}
+            - {name: OFFSET_STORAGE_TOPIC, value: debezium_connect_offsets}
+            - {name: STATUS_STORAGE_TOPIC, value: debezium_connect_status}
+            - {name: CONFIG_STORAGE_REPLICATION_FACTOR, value: "1"}
+            - {name: OFFSET_STORAGE_REPLICATION_FACTOR, value: "1"}
+            - {name: STATUS_STORAGE_REPLICATION_FACTOR, value: "1"}
+            - {name: CONNECT_KEY_CONVERTER, value: org.apache.kafka.connect.json.JsonConverter}
+            - {name: CONNECT_VALUE_CONVERTER, value: org.apache.kafka.connect.json.JsonConverter}
+            - {name: CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE, value: "false"}
+            - {name: CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE, value: "false"}
+            - {name: CONNECT_CONFIG_PROVIDERS, value: env}
+            - {name: CONNECT_CONFIG_PROVIDERS_ENV_CLASS, value: org.apache.kafka.common.config.provider.EnvVarConfigProvider}
+            - {name: CONNECT_CONFIG_PROVIDERS_ENV_PARAM_ALLOWLIST_PATTERN, value: '^DEBEZIUM_PASSWORD$'}
+            - {name: KAFKA_HEAP_OPTS, value: "-Xms256m -Xmx512m"}
+            - name: DEBEZIUM_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: cdc-secrets, key: DEBEZIUM_PASSWORD}
+          ports:
+            - {name: http, containerPort: 8083}
+          readinessProbe:
+            httpGet: {path: /connectors, port: http}
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.connect.resources | nindent 12 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cdc-connector-register
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 420
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      initContainers:
+        - name: configure-replication-role
+          image: {{ .Values.postgres.image | quote }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              until pg_isready -h cdc-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 3; done
+              psql -X -h cdc-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
+              \getenv role_password DEBEZIUM_PASSWORD
+              ALTER ROLE debezium PASSWORD :'role_password';
+              SQL
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: {name: cdc-config, key: POSTGRES_USER}
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: {name: cdc-config, key: POSTGRES_DB}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: {name: cdc-secrets, key: POSTGRES_PASSWORD}
+            - name: DEBEZIUM_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: cdc-secrets, key: DEBEZIUM_PASSWORD}
+      containers:
+        - name: register
+          image: {{ .Values.connect.image | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              until curl -fsS --max-time 5 http://cdc-kafka-connect:8083/connectors >/dev/null; do sleep 3; done
+              curl -fsS --max-time 60 -X PUT http://cdc-kafka-connect:8083/connectors/cdc-postgres/config -H 'Content-Type: application/json' --data-binary @/connector/connector.json >/dev/null
+          volumeMounts:
+            - {name: config, mountPath: /connector, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: cdc-connector-config}
+{{- end }}

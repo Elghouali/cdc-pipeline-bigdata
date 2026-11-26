@@ -1,0 +1,75 @@
+{{- if .Values.streaming.enabled }}
+{{- range $layer := list "bronze" "silver" "gold" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-spark-{{ $layer }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cdc-pipeline.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: spark-{{ $layer }}
+  template:
+    metadata:
+      labels:
+        {{- include "cdc-pipeline.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: spark-{{ $layer }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 185
+      terminationGracePeriodSeconds: 60
+      {{- include "cdc-pipeline.imagePullSecrets" $ | nindent 6 }}
+      initContainers:
+        - name: wait-for-catalog-and-broker
+          image: busybox:1.36
+          command: ["sh", "-ec", "until nc -z cdc-hive-metastore 9083 && nc -z cdc-kafka 9092; do sleep 3; done"]
+      containers:
+        - name: spark
+          image: {{ $.Values.streaming.image | quote }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          command: ["/opt/spark/bin/spark-submit"]
+          args:
+            - --master
+            - local[2]
+            - --driver-memory
+            - {{ $.Values.streaming.driverMemory | quote }}
+            - --conf
+            - spark.jars.ivy=/tmp/ivy
+            - /opt/spark-apps/{{ $layer }}_job.py
+            {{- if eq $layer "gold" }}
+            - --interval-seconds
+            - {{ $.Values.streaming.goldIntervalSeconds | quote }}
+            {{- end }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                configMapKeyRef: {name: cdc-config, key: MINIO_ROOT_USER}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: cdc-secrets, key: MINIO_ROOT_PASSWORD}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef: {name: cdc-config, key: KAFKA_BOOTSTRAP_SERVERS}
+            - name: MINIO_BUCKET
+              valueFrom:
+                configMapKeyRef: {name: cdc-config, key: MINIO_BUCKET}
+          resources:
+            {{- toYaml $.Values.streaming.resources | nindent 12 }}
+          volumeMounts:
+            - {name: conf, mountPath: /opt/spark/conf/spark-defaults.conf, subPath: spark-defaults.conf, readOnly: true}
+            - {name: ivy, mountPath: /tmp/ivy}
+            - {name: runtime, mountPath: /var/lib/cdc-runtime}
+      volumes:
+        - name: conf
+          configMap: {name: cdc-config}
+        - name: ivy
+          emptyDir: {}
+        - name: runtime
+          emptyDir: {}
+{{- end }}
+{{- end }}

@@ -27,6 +27,7 @@ Run:
 """
 
 import logging
+import os
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -311,7 +312,8 @@ def upsert(spark: SparkSession, table: str, df: DataFrame, batch_id: int) -> Non
 
 def start_stream(spark: SparkSession, table: str):
     bronze = f"{CATALOG}.{SCHEMA}.bronze_{table}_cdc"
-    checkpoint = f"s3a://warehouse/checkpoints/silver/{table}"
+    bucket = os.environ.get("MINIO_BUCKET", "warehouse")
+    checkpoint = f"s3a://{bucket}/checkpoints/silver/{table}"
 
     return (
         spark.readStream.format("iceberg")

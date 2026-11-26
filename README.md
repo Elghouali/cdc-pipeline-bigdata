@@ -353,7 +353,7 @@ pre-commit run --all-files
 
 ## Kubernetes Deployment (experimental templates)
 
-**Do not install the full chart or overlays in production.** The isolated kind workflow verified PostgreSQL and Kafka and now extends to private object storage and Hive/Trino catalog checks (pending verification). The full streaming workload and application deployment remain unvalidated on Kubernetes. See [Kubernetes guide](docs/k8s-deployment.md) and [deployment readiness](docs/DEPLOYMENT_READINESS.md). Docker Compose remains the tested local stack.
+**Do not install the full chart or overlays in production.** The isolated kind workflow verified PostgreSQL and Kafka and verified private object storage and Hive/Trino catalog checks. The next smoke extension exercises real Debezium/Spark CDC in local-mode driver pods; streaming and application deployment remain pending runtime verification. See [Kubernetes guide](docs/k8s-deployment.md) and [deployment readiness](docs/DEPLOYMENT_READINESS.md). Docker Compose remains the tested local stack.
 
 ---
 

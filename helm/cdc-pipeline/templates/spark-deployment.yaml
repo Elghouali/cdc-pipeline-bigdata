@@ -1,3 +1,4 @@
+{{- if not .Values.streaming.enabled }}
 # ── Spark Master ──────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -139,3 +140,5 @@ spec:
             items:
               - key: spark-defaults.conf
                 path: spark-defaults.conf
+
+{{- end }}

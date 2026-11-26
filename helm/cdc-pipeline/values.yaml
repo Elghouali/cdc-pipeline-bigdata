@@ -49,6 +49,26 @@ kafka:
       cpu: "2"
       memory: "2Gi"
 
+connect:
+  enabled: false
+  image: debezium/connect:2.5
+  password: ""
+  # Supply config/debezium-connector.json via --set-file connect.config=...
+  config: ""
+  resources:
+    requests: {cpu: "250m", memory: "384Mi"}
+    limits: {cpu: "1", memory: "1Gi"}
+
+streaming:
+  enabled: false
+  # Build spark/Dockerfile from the repository root and load into kind.
+  image: cdc-spark-jobs:ci
+  driverMemory: 1g
+  goldIntervalSeconds: 30
+  resources:
+    requests: {cpu: "500m", memory: "1Gi"}
+    limits: {cpu: "2", memory: "2304Mi"}
+
 # ── MinIO object storage ──────────────────────
 minio:
   image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z

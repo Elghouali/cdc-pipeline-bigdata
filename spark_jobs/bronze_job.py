@@ -27,6 +27,7 @@ Run:
 """
 
 import logging
+import os
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -39,7 +40,7 @@ logging.basicConfig(
 logger = logging.getLogger("bronze_job")
 
 TABLES = ["customers", "products", "orders", "order_items", "payments", "returns"]
-KAFKA_BOOTSTRAP = "kafka:9092"
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 TOPIC_PREFIX = "cdc.public"
 CATALOG = "iceberg"
 SCHEMA = "analytics"
@@ -199,7 +200,8 @@ def parse_and_write(
 
 def start_table_stream(spark: SparkSession, table: str):
     topic = f"{TOPIC_PREFIX}.{table}"
-    checkpoint = f"s3a://warehouse/checkpoints/bronze/{table}"
+    bucket = os.environ.get("MINIO_BUCKET", "warehouse")
+    checkpoint = f"s3a://{bucket}/checkpoints/bronze/{table}"
 
     raw = (
         spark.readStream.format("kafka")

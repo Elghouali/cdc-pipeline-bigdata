@@ -12,6 +12,7 @@ on:
       - 'spark/Dockerfile'
       - 'config/debezium-connector.json'
       - 'scripts/kubernetes_cdc_smoke.py'
+      - 'scripts/kubernetes_diagnostics.py'
       - 'scripts/cdc_smoke.py'
       - 'hive/Dockerfile'
       - 'security/trino-access-control.json'
@@ -25,6 +26,7 @@ on:
       - 'spark/Dockerfile'
       - 'config/debezium-connector.json'
       - 'scripts/kubernetes_cdc_smoke.py'
+      - 'scripts/kubernetes_diagnostics.py'
       - 'scripts/cdc_smoke.py'
       - '.github/workflows/kubernetes-smoke.yml'
 
@@ -161,6 +163,7 @@ jobs:
       - name: Build Spark jobs image
         run: |
           docker build -f spark/Dockerfile -t cdc-spark-jobs:ci .
+          docker run --rm --entrypoint /bin/sh cdc-spark-jobs:ci -ec 'test "$(id -u)" = 185; test -w "$HOME"; test -w /tmp/spark-local; test -r /opt/spark-apps/bronze_job.py'
           kind load docker-image cdc-spark-jobs:ci --name cdc-smoke
       - name: Run real Kubernetes Bronze, Silver and Gold lifecycle
         run: |
@@ -177,8 +180,15 @@ jobs:
             python -c 'import sys; import yaml; docs=yaml.safe_load_all(open(sys.argv[1])); print(yaml.safe_dump(next(d for d in docs if d and d["metadata"]["name"]=="cdc-spark-"+sys.argv[2])))' /tmp/cdc-streaming.yaml "$layer" | kubectl -n cdc-pipeline apply -f -
             if [ "$layer" = gold ]; then break; fi
             timeout 600 bash -ec '
-              until [ "$(kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user ci-smoke --catalog iceberg --schema analytics --output-format TSV --execute "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''analytics'\'' AND table_name IN ($1)" 2>/dev/null || true)" = 6 ]; do sleep 10; done
-            ' sh "$(if [ "$layer" = bronze ]; then printf "'bronze_%s_cdc'," customers products orders order_items payments returns | sed 's/,$//'; else printf "'silver_%s'," customers products orders order_items payments returns | sed 's/,$//'; fi)"
+              until [ "$(kubectl -n cdc-pipeline exec deployment/cdc-trino -- trino --user ci-smoke --catalog iceberg --schema analytics --output-format TSV --execute "SELECT count(*) FROM information_schema.tables WHERE table_schema = '\''analytics'\'' AND table_name IN ($1)" 2>/tmp/cdc-trino-readiness.log || true)" = 6 ]; do
+                restarts=$(kubectl -n cdc-pipeline get pods -l "app.kubernetes.io/component=spark-$2" -o jsonpath="{.items[0].status.containerStatuses[0].restartCount}" 2>/dev/null || true)
+                if [ "${restarts:-0}" -ge 3 ]; then
+                  echo "Spark $2 restarted at least three times before creating its tables"
+                  exit 1
+                fi
+                sleep 10
+              done
+            ' sh "$(if [ "$layer" = bronze ]; then printf "'bronze_%s_cdc'," customers products orders order_items payments returns | sed 's/,$//'; else printf "'silver_%s'," customers products orders order_items payments returns | sed 's/,$//'; fi)" "$layer"
           done
           python scripts/kubernetes_cdc_smoke.py --gold --timeout 480 --gold-timeout 720 --output artifacts/kubernetes-cdc-smoke.json
       - name: Collect cluster diagnostics
@@ -193,6 +203,9 @@ jobs:
           kubectl -n cdc-pipeline logs cdc-kafka-0 --tail=100 >> artifacts/cluster-summary.txt 2>&1 || true
           # Avoid dumping catalog logs or env values that may contain credentials.
           kubectl -n cdc-pipeline get deployments,jobs >> artifacts/cluster-summary.txt 2>&1 || true
+      - name: Capture sanitized Spark driver diagnostics
+        if: always()
+        run: python3 scripts/kubernetes_diagnostics.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -200,3 +213,4 @@ jobs:
           path: |
             artifacts/cluster-summary.txt
             artifacts/kubernetes-cdc-smoke.json
+            artifacts/spark-driver-diagnostics.txt

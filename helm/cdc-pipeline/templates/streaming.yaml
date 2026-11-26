@@ -46,6 +46,9 @@ spec:
             - {{ $.Values.streaming.goldIntervalSeconds | quote }}
             {{- end }}
           env:
+            - {name: HOME, value: /home/spark}
+            - {name: JAVA_TOOL_OPTIONS, value: "-Duser.home=/home/spark -Divy.home=/tmp/ivy -Divy.cache.dir=/tmp/ivy/cache"}
+            - {name: SPARK_LOCAL_DIRS, value: /tmp/spark-local}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 configMapKeyRef: {name: cdc-config, key: MINIO_ROOT_USER}

@@ -44,7 +44,7 @@ data:
     spark.hadoop.fs.s3a.connection.ssl.enabled false
     spark.hadoop.fs.s3a.access.key          {{ .Values.minio.rootUser }}
     {{- /* Secret key injected as AWS_SECRET_ACCESS_KEY env var in the Spark deployment. */}}
-    spark.hadoop.fs.s3a.aws.credentials.provider org.apache.hadoop.fs.s3a.EnvironmentVariableCredentialsProvider
+    spark.hadoop.fs.s3a.aws.credentials.provider com.amazonaws.auth.EnvironmentVariableCredentialsProvider
 
   # ── Trino catalog (iceberg) ──────────────────
   iceberg.properties: |
@@ -92,7 +92,7 @@ data:
       <property>
         <!-- Secret key comes from the MINIO_ROOT_PASSWORD env var injected from cdc-secrets. -->
         <name>fs.s3a.aws.credentials.provider</name>
-        <value>org.apache.hadoop.fs.s3a.EnvironmentVariableCredentialsProvider</value>
+        <value>com.amazonaws.auth.EnvironmentVariableCredentialsProvider</value>
       </property>
       <property>
         <name>fs.s3a.path.style.access</name>

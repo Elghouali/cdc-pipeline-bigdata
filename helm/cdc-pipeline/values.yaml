@@ -162,6 +162,7 @@ api:
   # REQUIRED: supply via --set api.secretKey=...
   secretKey: ""
   adminPassword: ""
+  databasePassword: ""
   service:
     port: 8000
   resources:
@@ -201,6 +202,11 @@ grafana:
   # REQUIRED: supply via --set grafana.adminPassword=... or a secrets file.
   # "admin" was a weak shipped default; now enforced required in secrets.yaml.
   adminPassword: ""
+
+monitoring:
+  enabled: false
+  prometheusImage: prom/prometheus:v2.50.1
+  grafanaImage: grafana/grafana:10.3.3
 
 # ── Ingress ───────────────────────────────────
 ingress:

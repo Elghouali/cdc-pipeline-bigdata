@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
 
 
 def _require_strong_secret(name: str, value: str, minimum: int) -> None:
@@ -13,6 +14,19 @@ def _require_strong_secret(name: str, value: str, minimum: int) -> None:
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _database_url() -> str:
+    if "API_DB_PASSWORD" in os.environ:
+        user = quote(os.getenv("API_DB_USER", "cdc_api"), safe="")
+        password = quote(os.environ["API_DB_PASSWORD"], safe="")
+        host = os.getenv("API_DB_HOST", "cdc-postgres")
+        port = int(os.getenv("API_DB_PORT", "5432"))
+        name = quote(os.getenv("API_DB_NAME", "ecommerce"), safe="")
+        return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+    return os.getenv(
+        "DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/ecommerce"
+    )
 
 
 @dataclass(frozen=True)
@@ -35,10 +49,7 @@ class Settings:
     @staticmethod
     def load() -> "Settings":
         return Settings(
-            database_url=os.getenv(
-                "DATABASE_URL",
-                "postgresql://postgres:postgres@postgres:5432/ecommerce",
-            ),
+            database_url=_database_url(),
             kafka_bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
             trino_url=os.getenv("TRINO_URL", "http://trino:8080").rstrip("/"),
             kafka_connect_url=os.getenv(

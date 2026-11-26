@@ -1,6 +1,20 @@
 {{- if .Values.streaming.enabled }}
 {{- range $layer := list "bronze" "silver" "gold" }}
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cdc-spark-{{ $layer }}
+spec:
+  selector:
+    {{- include "cdc-pipeline.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: spark-{{ $layer }}
+  ports:
+    - {name: ui, port: 4040, targetPort: 4040}
+    {{- if eq $layer "gold" }}
+    - {name: freshness, port: 8091, targetPort: 8091}
+    {{- end }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,6 +54,10 @@ spec:
             - {{ $.Values.streaming.driverMemory | quote }}
             - --conf
             - spark.jars.ivy=/tmp/ivy
+            - --conf
+            - spark.ui.port=4040
+            - --conf
+            - spark.ui.bindAddress=0.0.0.0
             - /opt/spark-apps/{{ $layer }}_job.py
             {{- if eq $layer "gold" }}
             - --interval-seconds
@@ -67,6 +85,21 @@ spec:
             - {name: conf, mountPath: /opt/spark/conf/spark-defaults.conf, subPath: spark-defaults.conf, readOnly: true}
             - {name: ivy, mountPath: /tmp/ivy}
             - {name: runtime, mountPath: /var/lib/cdc-runtime}
+        {{- if eq $layer "gold" }}
+        - name: freshness
+          image: {{ $.Values.streaming.image | quote }}
+          command: ["python3", "/opt/spark-apps/freshness_server.py"]
+          ports:
+            - {name: freshness, containerPort: 8091}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: "10m", memory: "32Mi"}
+            limits: {cpu: "100m", memory: "64Mi"}
+          volumeMounts:
+            - {name: runtime, mountPath: /var/lib/cdc-runtime, readOnly: true}
+        {{- end }}
       volumes:
         - name: conf
           configMap: {name: cdc-config}

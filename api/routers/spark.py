@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, status
 
 from config import settings
+from spark_runtime import driver_urls, live_applications
 
 logger = logging.getLogger("cdc-api.spark")
 
@@ -54,6 +55,11 @@ def _summarize_application(app: dict[str, Any]) -> dict[str, Any]:
 @router.get("/jobs")
 async def spark_jobs() -> dict[str, Any]:
     """Return the last 20 Spark applications from the History Server."""
+    if driver_urls():
+        async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+            apps = await live_applications(client)
+        jobs = [_summarize_application(app) for items in apps.values() for app in items]
+        return {"count": len(jobs), "jobs": jobs, "history_available": False}
     url = f"{settings.spark_history_url}/api/v1/applications?limit={_MAX_JOBS}"
     applications = await _get_json(url, "Spark History Server")
     if not isinstance(applications, list):
@@ -65,6 +71,23 @@ async def spark_jobs() -> dict[str, Any]:
 @router.get("/running")
 async def spark_running() -> dict[str, Any]:
     """Return apps currently running on the Spark master."""
+    if driver_urls():
+        async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+            apps = await live_applications(client)
+        running = [
+            {
+                "id": app.get("id"),
+                "name": app.get("name"),
+                "cores": None,
+                "memory_per_executor": None,
+                "submitted_at": (app.get("attempts") or [{}])[0].get("startTime"),
+                "state": "RUNNING",
+                "duration_ms": (app.get("attempts") or [{}])[0].get("duration"),
+            }
+            for items in apps.values()
+            for app in items
+        ]
+        return {"count": len(running), "running": running, "master_status": None}
     payload = await _get_json(f"{settings.spark_master_url}/json", "Spark Master")
     active = payload.get("activeapps", []) if isinstance(payload, dict) else []
     running = [

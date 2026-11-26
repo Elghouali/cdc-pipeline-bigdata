@@ -5,12 +5,14 @@ Caller: api/main.py (app.include_router). Endpoint: GET /api/health.
 
 import asyncio
 import logging
+import os
 import time
 
 import asyncpg
 import httpx
 from fastapi import APIRouter
 from models import HealthItem
+from spark_runtime import driver_urls
 
 from config import settings
 
@@ -20,7 +22,9 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 _CHECK_TIMEOUT_SECONDS = 3.0
 # MinIO is reachable on the docker network; derived from the standard endpoint.
-_MINIO_HEALTH_URL = "http://minio:9000/minio/health/live"
+_MINIO_HEALTH_URL = os.getenv(
+    "MINIO_HEALTH_URL", "http://minio:9000/minio/health/live"
+)
 
 
 def _elapsed_ms(start: float) -> int:
@@ -79,10 +83,19 @@ async def _check_postgres() -> HealthItem:
 @router.get("/health", response_model=list[HealthItem])
 async def health() -> list[HealthItem]:
     """Return up/down status and latency for every internal service."""
+    drivers = driver_urls()
+    spark_checks = (
+        [
+            _check_http(f"spark-{layer}", f"{url}/api/v1/applications", {200})
+            for layer, url in drivers.items()
+        ]
+        if drivers
+        else [_check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302})]
+    )
     results = await asyncio.gather(
         _check_http("trino", f"{settings.trino_url}/v1/status", {200}),
         _check_http("kafka-connect", f"{settings.kafka_connect_url}/connectors", {200}),
-        _check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302}),
+        *spark_checks,
         _check_http("minio", _MINIO_HEALTH_URL, {200}),
         _check_postgres(),
     )

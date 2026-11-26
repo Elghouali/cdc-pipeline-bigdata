@@ -14,7 +14,6 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
@@ -25,7 +24,7 @@ COPY . .
 EXPOSE 8000
 
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=5 \
-    CMD curl -sf http://localhost:8000/api/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"
 
 # ── dev: hot-reload for local development ──────
 FROM base AS dev
@@ -43,4 +42,6 @@ FROM base AS prod
 RUN python -m pip uninstall -y setuptools wheel \
     && python -m pip check \
     && python -c "import fastapi, uvicorn, asyncpg, aiokafka, passlib, bcrypt, jwt"
+RUN groupadd --gid 10001 cdc && useradd --uid 10001 --gid 10001 --no-create-home cdc
+USER 10001:10001
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

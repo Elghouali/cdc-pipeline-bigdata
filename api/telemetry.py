@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 from config import settings
+from spark_runtime import driver_urls, live_applications
 
 router = APIRouter()
 APP_NAMES = {
@@ -68,9 +69,56 @@ def render_metrics(master: dict, connector: dict, gold_timestamp: float = 0.0) -
     return "\n".join(lines) + "\n"
 
 
+def render_local_metrics(
+    apps: dict[str, list[dict]], connector: dict, gold_timestamp: float
+) -> str:
+    # Local pods have no standalone master; don't report a fabricated master gauge.
+    lines = [
+        "# TYPE cdc_gold_last_success_timestamp_seconds gauge",
+        f"cdc_gold_last_success_timestamp_seconds {gold_timestamp}",
+        "# TYPE cdc_spark_driver_active gauge",
+    ]
+    for layer, name in APP_NAMES.items():
+        active = sum(app.get("name") == name for app in apps.get(layer, []))
+        lines.append(f'cdc_spark_driver_active{{layer="{layer}"}} {active}')
+    tasks = connector.get("tasks") or []
+    healthy = (
+        connector.get("connector", {}).get("state") == "RUNNING"
+        and bool(tasks)
+        and all(task.get("state") == "RUNNING" for task in tasks)
+    )
+    lines.extend(
+        [
+            "# TYPE cdc_connector_healthy gauge",
+            f"cdc_connector_healthy {int(healthy)}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 @router.get("/metrics", include_in_schema=False)
 async def prometheus_metrics() -> PlainTextResponse:
     async with httpx.AsyncClient(timeout=3.0) as client:
+        if driver_urls():
+            apps, connector, refresh = await asyncio.gather(
+                live_applications(client),
+                get_json(
+                    client,
+                    f"{settings.kafka_connect_url}/connectors/{settings.connector_name}/status",
+                ),
+                get_json(client, "http://cdc-spark-gold:8091/timestamp"),
+            )
+            timestamp = refresh.get("timestamp", 0.0)
+            if (
+                not isinstance(timestamp, (int, float))
+                or not math.isfinite(timestamp)
+                or not 0 < timestamp <= time.time()
+            ):
+                timestamp = 0.0
+            return PlainTextResponse(
+                render_local_metrics(apps, connector, timestamp),
+                media_type="text/plain; version=0.0.4",
+            )
         master, connector = await asyncio.gather(
             get_json(client, f"{settings.spark_master_url}/json"),
             get_json(

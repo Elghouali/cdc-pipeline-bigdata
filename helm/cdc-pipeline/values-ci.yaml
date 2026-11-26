@@ -33,3 +33,11 @@ streaming:
   resources:
     requests:
       cpu: "200m"
+
+api:
+  resources:
+    requests:
+      cpu: "100m"
+frontend:
+  autoscaling:
+    enabled: false

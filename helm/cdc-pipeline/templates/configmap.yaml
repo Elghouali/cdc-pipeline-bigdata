@@ -19,6 +19,8 @@ data:
   KAFKA_CONNECT_URL: "http://cdc-kafka-connect:8083"
   SPARK_MASTER_URL: "http://cdc-spark-master:8080"
   SPARK_HISTORY_URL: "http://cdc-spark-master:18080"
+  MINIO_HEALTH_URL: "http://cdc-minio:{{ .Values.minio.service.apiPort }}/minio/health/live"
+  SPARK_MODE: {{ if .Values.streaming.enabled }}"local-pods"{{ else }}"standalone"{{ end }}
 
   # ── Spark defaults ───────────────────────────
   spark-defaults.conf: |

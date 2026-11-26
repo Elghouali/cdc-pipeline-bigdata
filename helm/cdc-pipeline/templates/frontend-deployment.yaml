@@ -20,11 +20,24 @@ spec:
         {{- include "cdc-pipeline.labels" . | nindent 8 }}
         app.kubernetes.io/component: {{ $component }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile: {type: RuntimeDefault}
       {{- include "cdc-pipeline.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: frontend
           image: {{ .Values.frontend.image | default "ghcr.io/elghouali/cdc-pipeline-bigdata/cdc-frontend:latest" | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
           env:
             - name: API_UPSTREAM
               value: "cdc-api:{{ .Values.api.service.port }}"
@@ -45,6 +58,9 @@ spec:
             periodSeconds: 15
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

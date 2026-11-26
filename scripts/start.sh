@@ -89,20 +89,6 @@ wait_hive_metastore() {
   fail "Hive Metastore not ready"
 }
 
-# ── Spark job submitter ────────────────────────────────────────────────────────
-
-spark_submit() {
-  local job="$1"
-  log "spark-submit: ${job} …"
-  local layer="${job%_job.py}"
-  docker exec -d cdc-spark-master sh -c '
-    exec /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
-      --deploy-mode client --conf spark.executor.memory=1g --conf spark.executor.cores=2 --conf spark.cores.max=2 \
-      "/opt/spark-apps/$1" > "/tmp/cdc-$2.log" 2>&1
-  ' cdc-driver "$job" "$layer"
-  ok "${job} submitted (driver log: /tmp/cdc-${layer}.log in spark-master)"
-}
-
 # ─────────────────────────────────────────────────────────────────────────────
 log "═══════════════════════════════════════════════"
 log "  CDC Pipeline — Full Startup"
@@ -140,11 +126,7 @@ sleep 20
 
 # ── Step 4: Submit Spark streaming jobs ───────────────────────────────────────
 log "Step 4/5 — Submitting Spark jobs …"
-spark_submit "bronze_job.py"
-sleep 10   # let Bronze create Iceberg tables before Silver reads them
-spark_submit "silver_job.py"
-sleep 10
-spark_submit "gold_job.py"
+make spark-all
 ok "All Spark jobs submitted."
 
 # ── Step 5: Start traffic simulator ───────────────────────────────────────────
@@ -177,7 +159,7 @@ log ""
 log "  Useful commands:"
 log "    docker logs -f cdc-spark-master     # Spark job output"
 log "    docker logs -f cdc-kafka-connect    # Debezium connector"
-log "    docker compose down -v              # Stop and clean up"
+log "    docker compose down                 # Stop; preserve data volumes"
 log ""
 log "  Simulator PID: ${SIM_PID}  (Ctrl-C to stop)"
 log "═══════════════════════════════════════════════"

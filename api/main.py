@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routers import alerts, auth, connector, events, health, metrics, query, spark
+from telemetry import router as telemetry_router
 
 from config import settings
 
@@ -73,6 +74,7 @@ async def root() -> dict[str, str]:
     return {"service": "cdc-pipeline-api", "version": "1.0.0", "docs": "/docs"}
 
 
+app.include_router(telemetry_router)
 app.include_router(health.router)
 app.include_router(metrics.router)
 app.include_router(query.router)

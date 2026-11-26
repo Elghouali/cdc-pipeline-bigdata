@@ -129,33 +129,28 @@ frontend-dev:                           ## Start frontend dev server locally (no
 
 # ── Spark job submission ───────────────────────────────────────────────────────
 
-spark-bronze:                           ## Submit Bronze streaming job (detached)
-	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
-	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/bronze_job.py > /tmp/cdc-bronze.log 2>&1'
-	@echo "Bronze job submitted (driver log: /tmp/cdc-bronze.log in spark-master)"
+spark-bronze:                           ## Start supervised Bronze driver
+	$(COMPOSE) exec -d spark-master python3 /opt/spark-apps/supervise.py bronze
 
-spark-silver:                           ## Submit Silver streaming job (detached)
-	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
-	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/silver_job.py > /tmp/cdc-silver.log 2>&1'
-	@echo "Silver job submitted (driver log: /tmp/cdc-silver.log in spark-master)"
+spark-silver:                           ## Start supervised Silver driver
+	$(COMPOSE) exec -d spark-master python3 /opt/spark-apps/supervise.py silver
 
 GOLD_REFRESH_SECONDS ?= 300
-spark-gold:                             ## Submit periodic Gold refresh job (detached)
-	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
-	  --conf spark.executor.cores=2 --conf spark.cores.max=2 /opt/spark-apps/gold_job.py --interval-seconds $(GOLD_REFRESH_SECONDS) > /tmp/cdc-gold.log 2>&1'
-	@echo "Gold job submitted (driver log: /tmp/cdc-gold.log in spark-master)"
+spark-gold:                             ## Start supervised Gold driver
+	$(COMPOSE) exec -d spark-master python3 /opt/spark-apps/supervise.py gold --interval-seconds $(GOLD_REFRESH_SECONDS)
 
-spark-all:                              ## Submit all Spark jobs with waits for table creation
+spark-all:                              ## Start all drivers after bounded readiness checks
 	$(MAKE) spark-bronze
-	@echo "Waiting 15s for Bronze to create Iceberg tables..."
-	@sleep 15
+	python3 scripts/wait_tables.py bronze
 	$(MAKE) spark-silver
-	@echo "Waiting 10s for Silver tables..."
-	@sleep 10
+	python3 scripts/wait_tables.py silver
 	$(MAKE) spark-gold
+
+spark-status:                           ## Show supervisor state (one JSON line per layer)
+	$(COMPOSE) exec -T spark-master python3 /opt/spark-apps/supervise.py --status
+
+reconcile:                              ## Compare source and Silver active key sets (quiescent source)
+	python3 scripts/reconcile.py
 
 # ── Pipeline operations ────────────────────────────────────────────────────────
 
@@ -169,7 +164,10 @@ simulate:                               ## Start e-commerce data simulator (back
 	@bash scripts/simulate_changes.sh &
 	@echo "Data simulator started in background"
 
-pipeline-start: up connector-register spark-all simulate  ## Full pipeline startup (one command)
+pipeline-start: up                      ## Full pipeline startup (one command)
+	$(MAKE) connector-register
+	$(MAKE) spark-all
+	$(MAKE) simulate
 
 # ── Interactive shells ─────────────────────────────────────────────────────────
 

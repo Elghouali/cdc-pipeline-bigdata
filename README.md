@@ -556,3 +556,7 @@ All queries filter to `snapshot_date = MAX(snapshot_date)` to avoid double-count
 ### Data correctness contract
 
 See [data correctness and migration](docs/DATA_CORRECTNESS.md) for replay assumptions, quarantine, monetary schema changes, metric definitions and test scope. Do not delete existing volumes to upgrade.
+
+### Reliability and recovery
+
+Spark drivers use bounded local supervisors (`make spark-all`, `make spark-status`). `make reconcile` compares active source/Silver key sets during a quiescent window. See [recovery and operational limitations](docs/RECOVERY.md).

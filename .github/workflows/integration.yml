@@ -24,6 +24,10 @@ on:
       - 'spark_jobs/**'
       - 'scripts/cdc_smoke.py'
       - 'scripts/business_smoke.py'
+      - 'scripts/recovery_smoke.py'
+      - 'scripts/reconcile.py'
+      - 'scripts/wait_tables.py'
+      - 'monitoring/**'
       - 'spark_tests/**'
       - 'api/**'
       - 'frontend/src/**'
@@ -160,7 +164,10 @@ jobs:
             exit 1
           fi
           grep -qi 'Access Denied' /tmp/trino-denial.log
+          python scripts/recovery_smoke.py
           python scripts/business_smoke.py
+          python scripts/reconcile.py --timeout 300
+          curl -fsS http://localhost:8000/metrics | grep -q 'cdc_connector_healthy 1'
           if docker compose exec -T trino trino --user api --execute 'SELECT * FROM iceberg.analytics.quarantine_customers LIMIT 1' > /tmp/trino-denial.log 2>&1; then
             echo 'Unexpected quarantine access'
             exit 1

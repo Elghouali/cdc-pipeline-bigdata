@@ -19,8 +19,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "CDC consumer group lag is growing — Spark may have stalled"
-          description: "Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }} lag grew by {{ $value }} messages in 10m. Spark streaming may have stopped processing."
+          summary: "CDC consumer group lag is growing — consumer group may have stalled"
+          description: "Consumer group {{ $labels.consumergroup }} on topic {{ $labels.topic }} lag grew by {{ $value }} messages in 10m. The reported consumer group may be stalled; this does not measure Spark checkpoint lag."
 
       - alert: DiskUsageHigh
         # minio_node_disk_* names are from older MinIO; 2024 MinIO exposes
@@ -62,3 +62,20 @@ groups:
         annotations:
           summary: "CDC API is unreachable"
           description: "The CDC API Prometheus scrape target has been unreachable for over 1 minute — the pipeline console is offline."
+
+      - alert: CDCDriverMissing
+        expr: cdc_spark_driver_active != 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Expected exactly one running Spark driver with allocated cores"
+          description: "Layer {{ $labels.layer }} has {{ $value }} active drivers."
+
+      - alert: CDCConnectorUnhealthy
+        expr: cdc_connector_healthy == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Debezium connector or its tasks are not running"

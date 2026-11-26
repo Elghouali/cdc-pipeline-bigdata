@@ -152,6 +152,15 @@ spark-status:                           ## Show supervisor state (one JSON line 
 reconcile:                              ## Compare source and Silver active key sets (quiescent source)
 	python3 scripts/reconcile.py
 
+backup-source:                          ## Create private PostgreSQL logical backup
+	python3 scripts/source_backup.py
+
+backup-verify:                          ## Restore source backup into isolated temporary database
+	python3 scripts/source_backup.py --verify
+
+maintenance-report:                    ## Inspect Iceberg file and snapshot counts (read-only)
+	python3 scripts/maintenance_report.py
+
 # ── Pipeline operations ────────────────────────────────────────────────────────
 
 connector-register:                     ## Register Debezium CDC connector

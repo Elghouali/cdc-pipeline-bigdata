@@ -22,6 +22,7 @@ import argparse
 import logging
 import time
 from datetime import date
+from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -522,6 +523,17 @@ def run_gold_refresh(spark: SparkSession, batch_id: int) -> None:
         raise
 
 
+def publish_refresh_timestamp() -> None:
+    """Record completion of all five Gold writes, even on idle source days."""
+    runtime = Path("/var/lib/cdc-runtime")
+    runtime.mkdir(parents=True, exist_ok=True)
+    target = runtime / "gold-refresh"
+    temporary = runtime / "gold-refresh.tmp"
+    temporary.write_text(str(time.time()), encoding="utf-8")
+    temporary.chmod(0o644)
+    temporary.replace(target)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval-seconds", type=int, default=300)
@@ -539,6 +551,7 @@ def main() -> None:
         while True:
             started = time.monotonic()
             run_gold_refresh(spark, batch_id)
+            publish_refresh_timestamp()
             batch_id += 1
             time.sleep(max(0, args.interval_seconds - (time.monotonic() - started)))
     finally:

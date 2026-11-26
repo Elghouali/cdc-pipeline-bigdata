@@ -79,3 +79,12 @@ groups:
           severity: critical
         annotations:
           summary: "Debezium connector or its tasks are not running"
+
+      - alert: CDCGoldRefreshStale
+        expr: time() - cdc_gold_last_success_timestamp_seconds > 900
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No complete Gold refresh in 15 minutes"
+          description: "Check Gold driver logs, all five table commits and upstream freshness."

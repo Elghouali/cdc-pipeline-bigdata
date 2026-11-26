@@ -25,6 +25,9 @@ on:
       - 'scripts/cdc_smoke.py'
       - 'scripts/business_smoke.py'
       - 'scripts/recovery_smoke.py'
+      - 'scripts/master_recovery.py'
+      - 'scripts/source_backup.py'
+      - 'scripts/maintenance_report.py'
       - 'scripts/reconcile.py'
       - 'scripts/wait_tables.py'
       - 'monitoring/**'
@@ -165,9 +168,13 @@ jobs:
           fi
           grep -qi 'Access Denied' /tmp/trino-denial.log
           python scripts/recovery_smoke.py
+          python scripts/master_recovery.py
           python scripts/business_smoke.py
           python scripts/reconcile.py --timeout 300
           curl -fsS http://localhost:8000/metrics | grep -q 'cdc_connector_healthy 1'
+          curl -fsS http://localhost:8000/metrics | python -c 'import sys,time; values=[float(line.split()[1]) for line in sys.stdin if line.startswith("cdc_gold_last_success_timestamp_seconds ")]; assert len(values)==1 and 0 <= time.time()-values[0] < 900, values'
+          python scripts/source_backup.py --verify --temporary
+          python scripts/maintenance_report.py
           if docker compose exec -T trino trino --user api --execute 'SELECT * FROM iceberg.analytics.quarantine_customers LIMIT 1' > /tmp/trino-denial.log 2>&1; then
             echo 'Unexpected quarantine access'
             exit 1

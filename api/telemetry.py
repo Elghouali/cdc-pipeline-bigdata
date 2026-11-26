@@ -1,6 +1,9 @@
 """Small, bounded Prometheus endpoint for service and Spark application status."""
 
 import asyncio
+import math
+import time
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter
@@ -26,12 +29,26 @@ async def get_json(client: httpx.AsyncClient, url: str) -> dict:
         return {}
 
 
-def render_metrics(master: dict, connector: dict) -> str:
+def gold_refresh_timestamp(path: Path) -> float:
+    try:
+        value = float(path.read_text(encoding="utf-8"))
+        if math.isfinite(value) and 0 < value <= time.time():
+            return value
+    except (OSError, ValueError):
+        pass
+    return 0.0
+
+
+def render_metrics(
+    master: dict, connector: dict, gold_timestamp: float = 0.0
+) -> str:
     apps = master.get("activeapps") or []
     tasks = connector.get("tasks") or []
     lines = [
         "# TYPE cdc_spark_master_reachable gauge",
         f"cdc_spark_master_reachable {int(bool(master))}",
+        "# TYPE cdc_gold_last_success_timestamp_seconds gauge",
+        f"cdc_gold_last_success_timestamp_seconds {gold_timestamp}",
         "# TYPE cdc_spark_driver_active gauge",
     ]
     for layer, name in APP_NAMES.items():
@@ -64,6 +81,10 @@ async def prometheus_metrics() -> PlainTextResponse:
             ),
         )
     return PlainTextResponse(
-        render_metrics(master, connector),
+        render_metrics(
+            master,
+            connector,
+            gold_refresh_timestamp(Path("/var/lib/cdc-runtime/gold-refresh")),
+        ),
         media_type="text/plain; version=0.0.4",
     )

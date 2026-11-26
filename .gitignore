@@ -70,3 +70,7 @@ helm/*/charts/
 helm/*/Chart.lock
 rapport/plantuml.jar
 rapport/*.jar
+
+# Local backups and generated operational evidence
+backups/
+artifacts/

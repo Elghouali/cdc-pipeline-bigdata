@@ -24,6 +24,7 @@ volumes:
   ivy2-cache:          # Maven/Ivy JAR cache shared across Spark containers
   prometheus-data:
   grafana-data:
+  pipeline-runtime:
 
 # ─────────────────────────────────────────────
 services:
@@ -274,6 +275,7 @@ services:
       - ./spark_jobs:/opt/spark-apps
       - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
       - ivy2-cache:/root/.ivy2
+      - pipeline-runtime:/var/lib/cdc-runtime
     networks:
       - cdc-net
 
@@ -486,6 +488,8 @@ services:
       SPARK_HISTORY_URL: "http://spark-master:18080"
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - pipeline-runtime:/var/lib/cdc-runtime:ro
     depends_on:
       postgres:
         condition: service_healthy

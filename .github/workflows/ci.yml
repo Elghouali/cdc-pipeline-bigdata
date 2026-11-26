@@ -246,8 +246,8 @@ jobs:
 
       - name: Build local images
         run: |
-          docker build --target prod -t cdc-api:ci ./api
-          docker build --target prod -t cdc-frontend:ci ./frontend
+          docker build --pull --target prod -t cdc-api:ci ./api
+          docker build --pull --target prod -t cdc-frontend:ci ./frontend
 
       - name: Scan API runtime image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -280,24 +280,10 @@ jobs:
           output: dependency-vulnerabilities.json
           exit-code: '0'
 
-      - name: Validate and summarize vulnerability reports
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          for name in ("api", "frontend", "dependency"):
-              report = json.loads(Path(f"{name}-vulnerabilities.json").read_text())
-              assert isinstance(report.get("SchemaVersion"), int), name
-              counts = {"HIGH": 0, "CRITICAL": 0}
-              for result in report.get("Results") or []:
-                  for finding in result.get("Vulnerabilities") or []:
-                      severity = finding.get("Severity")
-                      if severity in counts:
-                          counts[severity] += 1
-              print(name, counts)
-          PY
+      - name: Enforce vulnerability policy
+        run: python scripts/vulnerability_gate.py api-vulnerabilities.json frontend-vulnerabilities.json dependency-vulnerabilities.json
 
-      - name: Upload vulnerability evidence (report-only baseline)
+      - name: Upload vulnerability evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:

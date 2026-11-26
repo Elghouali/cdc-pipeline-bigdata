@@ -13,6 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,4 +38,9 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 # horizontally, run multiple containers behind a load balancer and replace
 # the in-process cache with a shared Redis instance.
 FROM base AS prod
+# Neither setuptools nor wheel is required to run the installed wheels.
+# Removing the build tool also removes its vulnerable vendored dependencies.
+RUN python -m pip uninstall -y setuptools wheel \
+    && python -m pip check \
+    && python -c "import fastapi, uvicorn, asyncpg, aiokafka, passlib, bcrypt, jwt"
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

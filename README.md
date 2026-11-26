@@ -564,4 +564,4 @@ See [data correctness and migration](docs/DATA_CORRECTNESS.md) for replay assump
 Spark drivers use bounded local supervisors (`make spark-all`, `make spark-status`). `make reconcile` compares active source/Silver key sets during a quiescent window. See [recovery and operational limitations](docs/RECOVERY.md).
 ### Container and benchmark evidence
 
-The frontend production image builds static assets and proxies API/SSE requests through Nginx. CI builds and scans both application images, publishes commit-specific tags, and validates manifest rendering. The vulnerability reports are an inventory, not a clean bill of health. See [deployment readiness](docs/DEPLOYMENT_READINESS.md) for evidence and blockers.
+The frontend production image builds static assets and proxies API/SSE requests through Nginx. CI builds and scans both application images, publishes commit-specific tags, and validates manifest rendering. Image publication is blocked by critical findings and fixable high findings. Unfixed high findings remain release blockers; the reports are not a clean bill of health. See [deployment readiness](docs/DEPLOYMENT_READINESS.md) for evidence and blockers.

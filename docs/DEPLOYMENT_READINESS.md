@@ -4,7 +4,7 @@
 
 Docker Compose is the integration-tested local stack, not an Internet-facing production service. The frontend uses a multi-stage Node build and unprivileged Nginx on port 3000; `make dev` keeps the Vite development server. Same-origin /api and /auth proxy paths preserve authorization headers and disable response buffering for SSE. Nginx resolves the configured API service at startup; restart the frontend if the API container IP changes. No public exposure is enabled.
 
-CI builds both application images and publishes SHA and latest tags after test, render and scanner jobs succeed. Use SHA or digest references for controlled deployments. Trivy HIGH/CRITICAL runtime and dependency results are published as JSON artifacts; the initial inventory deliberately does not gate on findings. Review and remediate results before release, then enforce a severity policy. No claim is made that infrastructure images are scanned or that current findings are zero. Version tags are not immutable digests.
+CI builds both application images and publishes SHA and latest tags after test, render and scanner jobs succeed. Use SHA or digest references for controlled deployments. Trivy HIGH/CRITICAL runtime and dependency results are published as JSON artifacts. Development image publication now fails on any CRITICAL or any HIGH with a listed fix. Unfixed HIGH findings are printed and remain production release blockers: run the same gate with --release to enforce zero HIGH/CRITICAL findings in the scanned scope. No claim is made that infrastructure images are scanned or that current findings are zero. Version tags are not immutable digests.
 
 ## Benchmark methodology
 
@@ -21,3 +21,7 @@ Helm and Kustomize rendering are checked in CI. Templates use correct applicatio
 - Establish measured sustained throughput, p50/p95/p99 latency and recovery SLOs.
 - Validate coordinated off-host full-stack backups, safe compaction, credential rotation, source reconciliation, and disaster recovery.
 - Record release evidence before tagging a production-ready version.
+
+## Vulnerability remediation baseline
+
+CI run 45877293192 found 60 HIGH API and 15 HIGH / 5 CRITICAL frontend package findings. The five critical entries affected Alpine nginx (four CVEs) and brotli-libs (one CVE), with fixed versions listed. Other fixable findings included Alpine OS libraries, Debian libzstd1, and vendored jaraco.context/wheel in setuptools. Both runtime builds now refresh OS security packages; the API production stage removes unnecessary packaging build tools and checks dependency consistency and imports. The frontend restores the unprivileged runtime user after package upgrades. CI pulls current base images before building and blocks publication on critical or fixable high findings; subsequent scans must confirm remediation. Unfixed Debian findings cannot be assumed fixed by upgrading, and their production risk still requires remediation or a documented security review. Reports are uploaded even when the gate blocks publishing. Infrastructure image scanning and digest pinning remain outstanding.

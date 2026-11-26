@@ -12,6 +12,10 @@ FROM deps AS build
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine AS prod
+# Refresh Alpine security packages in the final stage, then restore non-root UID.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 ENV API_UPSTREAM=api:8000
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

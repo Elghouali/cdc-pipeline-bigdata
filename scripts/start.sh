@@ -94,12 +94,13 @@ wait_hive_metastore() {
 spark_submit() {
   local job="$1"
   log "spark-submit: ${job} …"
-  docker exec -d cdc-spark-master \
-    /opt/spark/bin/spark-submit \
-      --master spark://spark-master:7077 \
-      --deploy-mode client \
-      "/opt/spark-apps/${job}"
-  ok "${job} submitted (streaming — check: docker logs cdc-spark-master)"
+  local layer="${job%_job.py}"
+  docker exec -d cdc-spark-master sh -c '
+    exec /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
+      --deploy-mode client --conf spark.executor.memory=1g --conf spark.cores.max=2 \
+      "/opt/spark-apps/$1" > "/tmp/cdc-$2.log" 2>&1
+  ' cdc-driver "$job" "$layer"
+  ok "${job} submitted (driver log: /tmp/cdc-${layer}.log in spark-master)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────

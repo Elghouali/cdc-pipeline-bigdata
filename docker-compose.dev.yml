@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 #
 # Changes vs production:
-#   - Spark worker reduced memory for dev laptops
+#   - Spark workers retain the same per-executor resource budget
 #   - Restart-on-failure for streaming services
 #   - API hot-reload via volume mount
 #   - Frontend dev server with hot-reload
@@ -20,7 +20,7 @@ services:
   spark-worker:
     restart: on-failure
     environment:
-      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_MEMORY: 1g
       SPARK_WORKER_CORES: 2
       SPARK_LOG_LEVEL: INFO
 

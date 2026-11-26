@@ -102,7 +102,7 @@ Apache Kafka 7.5
 | Requirement | Minimum |
 |-------------|---------|
 | Docker Desktop | 24.x with Compose v2 |
-| RAM allocated to Docker | 8 GB |
+| RAM allocated to Docker | 12–16 GB recommended for three concurrent Spark jobs |
 | Free disk space | 20 GB |
 | OS | Linux, macOS, or Windows with WSL2 |
 
@@ -267,6 +267,8 @@ LIMIT 10;
 
 ## Spark Jobs
 
+The default Compose configuration provisions three workers (one per 1 GiB streaming executor). Each job requests at most two cores. For the Bronze/Silver-only CI test, two workers are sufficient; the workflow starts only the data stack and API, not dashboard/monitoring services. Override `SPARK_WORKER_REPLICAS` for local capacity, but keep at least one worker per concurrently running job. Driver output is captured inside `spark-master` at `/tmp/cdc-{bronze,silver,gold}.log`.
+
 Submit jobs individually (detached — streaming jobs run indefinitely):
 
 ```bash
@@ -279,7 +281,7 @@ make spark-all       # All three, with waits for table creation
 Check output:
 
 ```bash
-docker logs -f cdc-spark-master 2>&1 | grep -E "bronze|silver|gold|Batch"
+docker compose exec spark-master tail -f /tmp/cdc-silver.log
 ```
 
 ---
@@ -519,7 +521,7 @@ All queries filter to `snapshot_date = MAX(snapshot_date)` to avoid double-count
 | Gold tables empty after first 5-min cycle | Trino `iceberg.properties` misconfigured | Verify `config/trino/catalog/iceberg.properties` has correct MinIO endpoint and credentials |
 | Dashboard login fails | API not reachable or wrong admin password | Check `docker logs cdc-api`; verify `API_ADMIN_PASSWORD` in `.env` |
 | `make spark-bronze` returns immediately | Jobs now run detached (`-d`) by design | Check `docker logs cdc-spark-master` for streaming output |
-| Docker out of memory | Docker Desktop limit too low | Increase to ≥ 8 GB in Docker Desktop → Settings → Resources |
+| Docker out of memory | Docker Desktop limit too low | Increase Docker memory; three concurrent streaming jobs need three executor slots |
 | Slack alerts not arriving | `SLACK_WEBHOOK_URL` not set in `.env` | Add a valid webhook URL; Alertmanager uses `envsubst` at startup |
 
 ---

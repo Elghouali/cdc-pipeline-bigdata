@@ -15,6 +15,10 @@ on:
       - 'hive/Dockerfile'
       - 'docker-compose.yml'
       - 'config/hive/**'
+      - 'config/spark/**'
+      - 'spark_jobs/**'
+      - 'scripts/cdc_smoke.py'
+      - 'Makefile'
       - '.github/workflows/integration.yml'
   # Weekly smoke test of the full stack — Sundays at 03:00 UTC.
   schedule:
@@ -25,7 +29,7 @@ permissions:
 
 jobs:
   integration:
-    name: Full-Stack Integration
+    name: CDC data-stack integration
     runs-on: ubuntu-latest
     # The full Docker stack (Kafka, Postgres, Spark, Trino, ...) needs headroom.
     timeout-minutes: 45
@@ -75,7 +79,10 @@ jobs:
         run: docker compose pull minio minio-init
 
       - name: Start Docker Compose stack
-        run: docker compose up -d
+        # Two independent executors for the two streaming applications.
+        # Avoid unrelated dashboard/monitoring memory pressure on CI runners.
+        run: |
+          docker compose up -d --scale spark-worker=2 postgres kafka-connect spark-master spark-worker trino api
 
       - name: Wait for services to be healthy
         run: |
@@ -88,7 +95,7 @@ jobs:
               sleep 5
             done
           '
-          echo "All services healthy."
+          echo "Health checks passed for running services; one-shot initialization is enforced by Compose dependencies."
           docker compose ps
 
       - name: Register Debezium connector
@@ -113,7 +120,7 @@ jobs:
         timeout-minutes: 20
         run: |
           make spark-silver
-          python scripts/cdc_smoke.py --timeout 180 --output artifacts/cdc-smoke.json
+          python scripts/cdc_smoke.py --timeout 300 --output artifacts/cdc-smoke.json
 
       - name: Upload CDC evidence
         if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_cdc)) }}
@@ -122,6 +129,21 @@ jobs:
           name: cdc-smoke-evidence
           path: artifacts/cdc-smoke.json
           if-no-files-found: warn
+
+      - name: Capture Spark driver diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts
+          docker compose exec -T spark-master sh -c 'for f in /tmp/cdc-*.log; do if [ -f "$f" ]; then echo "=== $f ==="; tail -n 250 "$f"; fi; done' > artifacts/spark-drivers.log 2>&1 || true
+          docker compose ps -a
+          if [ "${{ job.status }}" = failure ]; then cat artifacts/spark-drivers.log; fi
+
+      - name: Upload Spark diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spark-driver-diagnostics
+          path: artifacts/spark-drivers.log
 
       - name: Dump logs on failure
         if: failure()

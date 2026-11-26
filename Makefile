@@ -130,25 +130,22 @@ frontend-dev:                           ## Start frontend dev server locally (no
 # ── Spark job submission ───────────────────────────────────────────────────────
 
 spark-bronze:                           ## Submit Bronze streaming job (detached)
-	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 \
-	  --conf spark.executor.memory=1g \
-	  /opt/spark-apps/bronze_job.py
-	@echo "Bronze job submitted (streaming — check: docker logs cdc-spark-master)"
+	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
+	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
+	  --conf spark.cores.max=2 /opt/spark-apps/bronze_job.py > /tmp/cdc-bronze.log 2>&1'
+	@echo "Bronze job submitted (driver log: /tmp/cdc-bronze.log in spark-master)"
 
 spark-silver:                           ## Submit Silver streaming job (detached)
-	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 \
-	  --conf spark.executor.memory=1g \
-	  /opt/spark-apps/silver_job.py
-	@echo "Silver job submitted (streaming — check: docker logs cdc-spark-master)"
+	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
+	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
+	  --conf spark.cores.max=2 /opt/spark-apps/silver_job.py > /tmp/cdc-silver.log 2>&1'
+	@echo "Silver job submitted (driver log: /tmp/cdc-silver.log in spark-master)"
 
 spark-gold:                             ## Submit Gold streaming job (detached)
-	$(COMPOSE) exec -d spark-master /opt/spark/bin/spark-submit \
-	  --master spark://spark-master:7077 \
-	  --conf spark.executor.memory=1g \
-	  /opt/spark-apps/gold_job.py
-	@echo "Gold job submitted (streaming — check: docker logs cdc-spark-master)"
+	$(COMPOSE) exec -d spark-master sh -c 'exec /opt/spark/bin/spark-submit \
+	  --master spark://spark-master:7077 --conf spark.executor.memory=1g \
+	  --conf spark.cores.max=2 /opt/spark-apps/gold_job.py > /tmp/cdc-gold.log 2>&1'
+	@echo "Gold job submitted (driver log: /tmp/cdc-gold.log in spark-master)"
 
 spark-all:                              ## Submit all Spark jobs with waits for table creation
 	$(MAKE) spark-bronze

@@ -274,6 +274,8 @@ services:
 
   # ── Spark Worker ──────────────────────────────
   spark-worker:
+    # One 1 GiB executor per worker; three workers support Bronze/Silver/Gold concurrently.
+    scale: ${SPARK_WORKER_REPLICAS:-3}
     image: apache/spark:3.5.3-python3
     restart: on-failure
     user: root
@@ -291,7 +293,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5g
+          memory: 2g
     networks:
       - cdc-net
 

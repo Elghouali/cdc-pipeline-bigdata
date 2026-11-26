@@ -43,7 +43,7 @@ services:
       -c max_replication_slots=4
       -c track_commit_timestamp=on
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
@@ -64,7 +64,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME:   2000
     ports:
-      - "2181:2181"
+      - "127.0.0.1:2181:2181"
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-log:/var/lib/zookeeper/log
@@ -96,8 +96,8 @@ services:
       KAFKA_LOG_RETENTION_HOURS:               168
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS:  0
     ports:
-      - "9092:9092"
-      - "29092:29092"
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:29092:29092"
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -136,7 +136,7 @@ services:
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE:   "false"
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors"]
       interval: 15s
@@ -159,8 +159,8 @@ services:
       MINIO_PROMETHEUS_AUTH_TYPE:   "public"
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
     networks:
@@ -180,7 +180,7 @@ services:
           echo 'Waiting for MinIO...'; sleep 3;
         done &&
         mc mb --ignore-existing local/warehouse &&
-        mc anonymous set public local/warehouse &&
+        mc anonymous set none local/warehouse &&
         echo 'Bucket warehouse is ready.'
       "
     networks:
@@ -199,7 +199,7 @@ services:
       --character-set-server=utf8
       --collation-server=utf8_unicode_ci
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mariadb-data:/var/lib/mysql
     healthcheck:
@@ -235,7 +235,7 @@ services:
         -Dfs.s3a.path.style.access=true
         -Dfs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
     ports:
-      - "9083:9083"
+      - "127.0.0.1:9083:9083"
     volumes:
       - ./config/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
     healthcheck:
@@ -263,8 +263,8 @@ services:
       SPARK_MASTER_PORT: "7077"
       SPARK_MASTER_WEBUI_PORT: "8080"
     ports:
-      - "7077:7077"
-      - "8085:8080"     # Spark Master UI
+      - "127.0.0.1:7077:7077"
+      - "127.0.0.1:8085:8080"     # Spark Master UI
     volumes:
       - ./spark_jobs:/opt/spark-apps
       - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
@@ -305,7 +305,7 @@ services:
       hive-metastore:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./config/trino/config.properties:/etc/trino/config.properties:ro
       - ./config/trino/jvm.config:/etc/trino/jvm.config:ro
@@ -332,7 +332,7 @@ services:
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-cdc_pipeline_secret_key_change_me}
     ports:
-      - "8088:8088"
+      - "127.0.0.1:8088:8088"
     command: >
       /bin/sh -c "
         pip install --quiet trino sqlalchemy-trino &&
@@ -360,7 +360,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--storage.tsdb.retention.time=15d'
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -383,7 +383,7 @@ services:
     environment:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/REPLACE_ME}
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     networks:
@@ -398,7 +398,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
@@ -415,7 +415,7 @@ services:
     container_name: cdc-loki
     command: -config.file=/etc/loki/local-config.yaml
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     networks:
       - cdc-net
 
@@ -438,7 +438,7 @@ services:
     command:
       - "--kafka.server=kafka:9092"
     ports:
-      - "9308:9308"
+      - "127.0.0.1:9308:9308"
     depends_on:
       kafka:
         condition: service_healthy
@@ -452,7 +452,7 @@ services:
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ecommerce?sslmode=disable"
     ports:
-      - "9187:9187"
+      - "127.0.0.1:9187:9187"
     depends_on:
       postgres:
         condition: service_healthy
@@ -475,7 +475,7 @@ services:
       SPARK_MASTER_URL: "http://spark-master:8080"
       SPARK_HISTORY_URL: "http://spark-master:18080"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -497,7 +497,7 @@ services:
     environment:
       VITE_API_PROXY: "http://api:8000"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - api
     networks:

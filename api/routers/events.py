@@ -14,7 +14,9 @@ from typing import Any
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import KafkaError
-from fastapi import APIRouter, Request
+from auth import decode_token, get_current_user, oauth2_scheme
+from fastapi import APIRouter, Depends, Request
+from models import User
 from fastapi.responses import StreamingResponse
 
 from config import CDC_TOPICS, settings
@@ -35,28 +37,27 @@ def _decode_envelope(raw: bytes | None) -> dict[str, Any] | None:
     if raw is None:
         return None
     try:
-        return json.loads(raw.decode("utf-8"))
+        envelope = json.loads(raw.decode("utf-8"))
+        return envelope if isinstance(envelope, dict) else None
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
 def _to_event(topic: str, envelope: dict[str, Any]) -> dict[str, Any]:
-    """Map a Debezium envelope to the public SSE event shape."""
-    source = envelope.get("source") or {}
-    op = envelope.get("op", "r")
-    table = source.get("table") or topic.split(".")[-1]
-    ts = envelope.get("ts_ms") or source.get("ts_ms")
-    payload = envelope.get("after") if op != "d" else envelope.get("before")
+    """Publish metadata only: never forward raw before/after business records."""
+    op = envelope.get("op")
+    ts = envelope.get("ts_ms")
     return {
         "topic": topic,
-        "op": op,
-        "table": table,
-        "ts": ts,
-        "payload": payload or {},
+        "op": op if op in ("c", "u", "d", "r") else "r",
+        "table": topic.rsplit(".", 1)[-1],
+        "ts": ts if isinstance(ts, int) and not isinstance(ts, bool) else None,
+        "payload": {},
     }
 
-
-async def _event_generator(request: Request) -> AsyncIterator[bytes]:
+async def _event_generator(
+    request: Request, expires_at: float
+) -> AsyncIterator[bytes]:
     # Each SSE connection gets a unique group_id so every browser tab receives
     # all events. A shared group_id would cause Kafka to load-balance messages
     # across connections, meaning each tab sees only a fraction of events.
@@ -66,13 +67,14 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
         bootstrap_servers=settings.kafka_bootstrap_servers,
         group_id=unique_group,
         auto_offset_reset="latest",
-        enable_auto_commit=True,
+        enable_auto_commit=False,
     )
     try:
         await consumer.start()
     except KafkaError as exc:
         logger.error("Kafka consumer failed to start: %s", exc)
-        yield _sse("error", {"detail": f"Kafka unavailable: {exc}"})
+        await consumer.stop()
+        yield _sse("error", {"detail": "Kafka unavailable"})
         return
 
     yield _sse("ready", {"topics": list(CDC_TOPICS)})
@@ -81,7 +83,7 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
     last_heartbeat = time.monotonic()
 
     try:
-        while True:
+        while time.time() < expires_at:
             if await request.is_disconnected():
                 logger.info("SSE client disconnected.")
                 break
@@ -97,6 +99,8 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
             last_heartbeat = time.monotonic()
             for tp, messages in batch.items():
                 for message in messages:
+                    if time.time() >= expires_at:
+                        return
                     envelope = _decode_envelope(message.value)
                     if envelope is None:
                         continue
@@ -106,17 +110,23 @@ async def _event_generator(request: Request) -> AsyncIterator[bytes]:
         raise
     except KafkaError as exc:
         logger.error("Kafka error during streaming: %s", exc)
-        yield _sse("error", {"detail": str(exc)})
+        yield _sse("error", {"detail": "Event stream unavailable"})
     finally:
         await consumer.stop()
         logger.info("Kafka consumer stopped.")
 
 
 @router.get("/stream")
-async def stream_events(request: Request) -> StreamingResponse:
-    """Stream live CDC change events to the client over SSE."""
+async def stream_events(
+    request: Request,
+    _user: User = Depends(get_current_user),
+    token: str | None = Depends(oauth2_scheme),
+) -> StreamingResponse:
+    """Stream authenticated, metadata-only CDC events until JWT expiry."""
+    claims = decode_token(token or "")
+    expires_at = min(float(claims.get("exp", 0)), time.time() + 300)
     return StreamingResponse(
-        _event_generator(request),
+        _event_generator(request, expires_at),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

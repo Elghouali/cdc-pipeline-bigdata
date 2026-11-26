@@ -18,6 +18,8 @@ on:
       - 'config/spark/**'
       - 'spark_jobs/**'
       - 'scripts/cdc_smoke.py'
+      - 'api/**'
+      - 'frontend/src/**'
       - 'Makefile'
       - '.github/workflows/integration.yml'
   # Weekly smoke test of the full stack — Sundays at 03:00 UTC.
@@ -97,6 +99,12 @@ jobs:
           '
           echo "Health checks passed for running services; one-shot initialization is enforced by Compose dependencies."
           docker compose ps
+
+      - name: Verify local security boundary
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:9000/warehouse/)" = 403
+          timeout 60 bash -c 'until [ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/events/stream)" = 401 ]; do sleep 2; done'
+          docker compose ps --format json | python -c 'import sys,json; rows=[json.loads(line) for line in sys.stdin if line.strip()]; rows=[item for row in rows for item in (row if isinstance(row,list) else [row])]; publishers=[p for row in rows for p in (row.get("Publishers") or []) if p.get("PublishedPort")]; assert publishers and all(p.get("URL") in ("127.0.0.1", "::1") for p in publishers), publishers'
 
       - name: Register Debezium connector
         run: make connector-register

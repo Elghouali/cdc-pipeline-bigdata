@@ -302,6 +302,11 @@ curl -s http://localhost:8083/connectors/cdc-postgres/status | python3 -m json.t
 
 Silver uses Kafka partition/offset watermarks to reject stale updates and retain delete tombstones. This changes the Silver schema: see [ordering assumptions and migration instructions](docs/SILVER_ORDERING.md) before restarting an existing deployment. Live Iceberg replay validation remains pending.
 
+
+### Local security boundary
+
+Compose host ports bind to loopback only. For remote development use SSH port forwarding, not public database, Kafka, Trino or object-storage ports. The warehouse initializer explicitly removes anonymous bucket access, including on an existing warehouse. The CDC browser feed requires a bearer JWT and exposes only event metadata (topic, operation and timestamp), never customer/payment payloads. Connections expire at JWT expiry or after five minutes and reconnect using the token. This is containment for a local/demo stack, not complete production security: Trino engine authorization, secret rotation, TLS and network segmentation remain outstanding. See [security hardening notes](docs/SECURITY_HARDENING.md).
+
 ## CDC acceptance testing
 
 The API unit tests alone do not prove source-to-lakehouse delivery. Run the [CDC lifecycle acceptance harness](docs/CDC_ACCEPTANCE.md) against an isolated local stack to verify real PostgreSQL INSERT/UPDATE/DELETE propagation into Bronze and Silver, optionally Gold, and generate measured JSON evidence.
@@ -319,7 +324,7 @@ python scripts/cdc_smoke.py --output artifacts/cdc-smoke.json
 | UPDATE | 8.800 s | 36.519 s |
 | DELETE | 29.225 s | 28.243 s |
 
-These are sequential per-check observation times, not independent end-to-end latencies, percentiles, or throughput measurements. Gold customer lifecycle verification has been added; its results must be confirmed by a new workflow run.
+These are sequential per-check observation times, not independent end-to-end latencies, percentiles, or throughput measurements. Gold customer lifecycle verification also passed in [run 45847257938](https://github.com/Elghouali/cdc-pipeline-bigdata/actions/runs/45847257938) on commit `5d42f9f`: all nine customer INSERT/UPDATE/DELETE assertions passed across Bronze, Silver and Gold. This does not validate every entity or business aggregate.
 
 ## Development
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Filter, Search, Activity, List } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 import type { SseEvent, SseOp } from '@/types/api';
 
 const CDC_TOPICS = [
@@ -42,32 +43,77 @@ export function StreamPage() {
   const [topicFilter, setTopicFilter] = useState('');
   const [connected, setConnected] = useState(false);
   const eventIdRef = useRef(0);
-  const esRef = useRef<EventSource | null>(null);
+  const { token, logout } = useAuth();
 
   useEffect(() => {
-    const es = new EventSource('/api/events/stream');
-    esRef.current = es;
+    if (!token) return;
+    const accessToken = token;
+    const controller = new AbortController();
+    const signal = controller.signal;
+    let retry: ReturnType<typeof setTimeout> | undefined;
 
-    es.addEventListener('ready', () => setConnected(true));
-
-    es.addEventListener('change', (e: MessageEvent<string>) => {
+    async function connect() {
       try {
-        const data = JSON.parse(e.data) as Omit<SseEvent, 'id'>;
-        setEvents(prev => [
-          { ...data, id: eventIdRef.current++ },
-          ...prev.slice(0, MAX_EVENTS - 1),
-        ]);
-      } catch { /* malformed SSE frame */ }
-    });
+        const res = await fetch('/api/events/stream', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          signal,
+          cache: 'no-store',
+        });
+        if (res.status === 401) {
+          logout();
+          return;
+        }
+        if (!res.ok || !res.body) throw new Error('Event stream unavailable');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+          while (!signal.aborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            // The server emits LF-delimited SSE frames. Bound partial input.
+            if (buffer.length > 65536) throw new Error('Invalid event frame');
+            let end: number;
+            while ((end = buffer.indexOf('\n\n')) !== -1) {
+              const frame = buffer.slice(0, end);
+              buffer = buffer.slice(end + 2);
+              if (signal.aborted) return;
+              const lines = frame.split('\n');
+              const event = lines.find(line => line.startsWith('event: '))?.slice(7);
+              const data = lines.find(line => line.startsWith('data: '))?.slice(6);
+              if (event === 'ready') setConnected(true);
+              if (event === 'error') setConnected(false);
+              if (event === 'change' && data) {
+                try {
+                  const parsed = JSON.parse(data) as Omit<SseEvent, 'id'>;
+                  const id = eventIdRef.current++;
+                  setEvents(prev => [{ ...parsed, id }, ...prev.slice(0, MAX_EVENTS - 1)]);
+                } catch { /* malformed SSE frame */ }
+              }
+            }
+          }
+        } finally {
+          await reader.cancel().catch(() => undefined);
+          reader.releaseLock();
+        }
+      } catch {
+        // A bounded retry handles temporary service failures.
+      } finally {
+        if (!signal.aborted) {
+          setConnected(false);
+          retry = setTimeout(() => { void connect(); }, 3000);
+        }
+      }
+    }
 
-    es.addEventListener('error', () => setConnected(false));
-
+    void connect();
     return () => {
-      es.close();
-      esRef.current = null;
+      controller.abort();
+      if (retry !== undefined) clearTimeout(retry);
       setConnected(false);
     };
-  }, []);
+  }, [token, logout]);
 
   const filtered = events.filter(ev => {
     if (search && !ev.table.toLowerCase().includes(search.toLowerCase())) return false;

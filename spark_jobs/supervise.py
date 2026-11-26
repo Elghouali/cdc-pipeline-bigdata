@@ -1,4 +1,5 @@
 """Bounded, single-writer Spark driver supervisor for local Compose."""
+
 import argparse
 import fcntl
 import json
@@ -128,7 +129,9 @@ def main():
     if args.status:
         for layer in LAYERS:
             path = state_path(layer)
-            state = json.loads(path.read_text()) if path.exists() else {"state": "absent"}
+            state = (
+                json.loads(path.read_text()) if path.exists() else {"state": "absent"}
+            )
             print(json.dumps({"layer": layer, **state}))
         return 0
     if not args.layer or args.interval_seconds <= 0:

@@ -37,7 +37,11 @@ SCHEMA = "analytics"
 
 
 def get_spark() -> SparkSession:
-    return SparkSession.builder.appName("cdc-gold-aggregation").getOrCreate()
+    return (
+        SparkSession.builder.appName("cdc-gold-aggregation")
+        .config("spark.sql.catalog.iceberg.cache-enabled", "false")
+        .getOrCreate()
+    )
 
 
 def _ddl(table: str, body: str) -> str:
@@ -445,6 +449,17 @@ def run_gold_refresh(spark: SparkSession, batch_id: int) -> None:
     snapshot_date = spark.sql("SELECT current_date() AS day").first().day
     logger.info("Gold refresh triggered — batch %d", batch_id)
     try:
+        # Silver writes from another Spark application. Invalidate Spark SQL
+        # metadata before building each new set of batch DataFrames.
+        for table in (
+            "customers",
+            "products",
+            "orders",
+            "order_items",
+            "payments",
+            "returns",
+        ):
+            spark.catalog.refreshTable(f"{CATALOG}.{SCHEMA}.silver_{table}")
         refresh_gold_table(
             "gold_customers", build_gold_customers(spark), batch_id, snapshot_date
         )

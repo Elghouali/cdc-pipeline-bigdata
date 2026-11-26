@@ -31,12 +31,15 @@ def postgres(sql):
     ])
 
 
-def trino_count(sql, timeout=30):
-    output = command(COMPOSE + [
+def trino_query(sql, timeout=30):
+    return command(COMPOSE + [
         "trino", "trino", "--catalog", "iceberg", "--schema", "analytics",
         "--output-format", "TSV", "--execute", sql,
     ], timeout=timeout)
-    return int(output)
+
+
+def trino_count(sql, timeout=30):
+    return int(trino_query(sql, timeout))
 
 
 def wait_for(label, sql, predicate, timeout, interval):
@@ -144,6 +147,19 @@ def run(args):
         report["failed_check"] = current_check
         report["error"] = str(exc) if isinstance(exc, TimeoutError) else type(exc).__name__
         print(f"FAIL {current_check}: {report['error']}", flush=True)
+        if args.gold and current_check.startswith('gold:') and customer_id is not None:
+            # Capture only the synthetic fixture's non-identifying fields before cleanup.
+            diagnostics = {}
+            for name, sql in (
+                ('silver', f'SELECT id, city, _is_deleted FROM silver_customers WHERE id = {customer_id}'),
+                ('gold', f'SELECT customer_id, city, total_orders, total_spent, avg_order_value, snapshot_date FROM gold_customers WHERE customer_id = {customer_id} AND snapshot_date = current_date'),
+            ):
+                try:
+                    diagnostics[name] = trino_query(sql, timeout=20)
+                except (subprocess.SubprocessError, OSError) as diag_exc:
+                    diagnostics[name] = type(diag_exc).__name__
+            report['gold_failure_diagnostics'] = diagnostics
+            print(f'Gold fixture diagnostics: {json.dumps(diagnostics)}', flush=True)
     finally:
         try:
             # Unique fixture only, even when the source insert response was lost.

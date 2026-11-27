@@ -10,7 +10,8 @@ def driver_urls() -> dict[str, str]:
     if os.getenv("SPARK_MODE") != "local-pods":
         return {}
     return {
-        layer: f"http://cdc-spark-{layer}:4040" for layer in ("bronze", "silver", "gold")
+        layer: f"http://cdc-spark-{layer}:4040"
+        for layer in ("bronze", "silver", "gold")
     }
 
 
@@ -34,5 +35,7 @@ async def live_applications(client: httpx.AsyncClient) -> dict[str, list[dict]]:
             return layer, []
 
     return dict(
-        await asyncio.gather(*(fetch(layer, url) for layer, url in driver_urls().items()))
+        await asyncio.gather(
+            *(fetch(layer, url) for layer, url in driver_urls().items())
+        )
     )

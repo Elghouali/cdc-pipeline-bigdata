@@ -45,15 +45,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence
+          printf 'Requested image: %s\n' "$IMAGE" > evidence/build-status.txt
           if [ -n "$BUILD" ]; then
-            bash -ec "$BUILD"
+            bash -ec "$BUILD" 2>&1 | tee -a evidence/build-status.txt
           else
-            docker pull "$IMAGE"
+            docker pull "$IMAGE" 2>&1 | tee -a evidence/build-status.txt
           fi
           docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$IMAGE" > evidence/image-identity.txt
       - name: Smoke test alternate API runtime
         if: matrix.name == 'api-alpine-candidate'
-        run: docker run --rm --entrypoint python cdc-api-alpine:release-ci -m pytest tests/ -q
+        run: docker run --rm --entrypoint python cdc-api-alpine:release-ci -m pytest tests/ -q -p no:cacheprovider
       - name: Scan all high and critical vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:

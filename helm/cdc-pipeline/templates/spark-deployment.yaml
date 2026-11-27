@@ -49,8 +49,9 @@ spec:
               mountPath: /opt/spark/conf/spark-defaults.conf
               subPath: spark-defaults.conf
           readinessProbe:
-            tcpSocket:
-              port: 7077
+            httpGet:
+              path: /json
+              port: ui
             initialDelaySeconds: 15
             periodSeconds: 10
           livenessProbe:

@@ -22,9 +22,7 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 _CHECK_TIMEOUT_SECONDS = 3.0
 # MinIO is reachable on the docker network; derived from the standard endpoint.
-_MINIO_HEALTH_URL = os.getenv(
-    "MINIO_HEALTH_URL", "http://minio:9000/minio/health/live"
-)
+_MINIO_HEALTH_URL = os.getenv("MINIO_HEALTH_URL", "http://minio:9000/minio/health/live")
 
 
 def _elapsed_ms(start: float) -> int:
@@ -90,7 +88,9 @@ async def health() -> list[HealthItem]:
             for layer, url in drivers.items()
         ]
         if drivers
-        else [_check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302})]
+        else [
+            _check_http("spark-master", f"{settings.spark_master_url}/json", {200, 302})
+        ]
     )
     results = await asyncio.gather(
         _check_http("trino", f"{settings.trino_url}/v1/status", {200}),

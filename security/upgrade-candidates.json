@@ -1,0 +1,74 @@
+[
+  {
+    "name": "postgres",
+    "image": "postgres:15.20-alpine",
+    "source": "https://www.postgresql.org/docs/15/release-15-20.html",
+    "compatibility": "Logical replication, persisted volume permissions, role bootstrap and source backup/restore."
+  },
+  {
+    "name": "kafka",
+    "image": "confluentinc/cp-kafka:7.9.6",
+    "source": "https://docs.confluent.io/platform/7.9/release-notes/index.html",
+    "compatibility": "Test jointly with ZooKeeper, topic ordering, offsets and Debezium. A later KRaft migration remains separate."
+  },
+  {
+    "name": "zookeeper",
+    "image": "confluentinc/cp-zookeeper:7.9.6",
+    "source": "https://docs.confluent.io/platform/7.9/release-notes/index.html",
+    "compatibility": "Joint Kafka test; verify image availability and persisted metadata upgrade."
+  },
+  {
+    "name": "connect",
+    "image": "quay.io/debezium/connect:3.7",
+    "source": "https://debezium.io/documentation/reference/3.7/tutorial.html",
+    "compatibility": "Verify supported Kafka version, connector environment, snapshot schema, credential provider, offset resume."
+  },
+  {
+    "name": "hive-base",
+    "image": "apache/hive:4.2.1",
+    "source": "https://hive.apache.org/general/downloads/",
+    "compatibility": "Base image screening only; rebuild custom metastore with matching Hadoop S3 libraries, schema migration and JDBC tests."
+  },
+  {
+    "name": "spark-base",
+    "image": "apache/spark:3.5.10-python3",
+    "source": "https://spark.apache.org/releases/spark-release-3-5-10.html",
+    "compatibility": "Base image screening only; rebuild custom driver with matching Kafka artifacts, Iceberg and Hadoop versions, checkpoint replay."
+  },
+  {
+    "name": "trino",
+    "image": "trinodb/trino:484",
+    "source": "https://trino.io/docs/current/release/release-484.html",
+    "compatibility": "Migrate legacy hive.s3 settings to supported native S3 configuration and retest file access rules and query behavior."
+  },
+  {
+    "name": "mariadb",
+    "image": "mariadb:10.11.20",
+    "source": "https://mariadb.org/mariadb-server-12-3-11-8-11-4-and-10-11-q4-2026-maintenance-releases/",
+    "compatibility": "Catalog schema, DB persistence, backup/restore."
+  },
+  {
+    "name": "prometheus",
+    "image": "prom/prometheus:v3.16.0",
+    "source": "https://prometheus.io/download/",
+    "compatibility": "Validate alert rules, scrape metrics and API changes."
+  },
+  {
+    "name": "grafana",
+    "image": "grafana/grafana:12.4.16",
+    "source": "https://grafana.com/grafana/download/12.4.16",
+    "compatibility": "Provisioned dashboard, data source, authentication and upgrade migrations."
+  },
+  {
+    "name": "silo",
+    "image": "pgsty/silo:RELEASE.2026-11-12T00-00-00Z",
+    "source": "https://github.com/pgsty/silo/releases",
+    "compatibility": "Verify registry tag, server entrypoint, private bucket access, S3A and Trino."
+  },
+  {
+    "name": "minio-client",
+    "image": "pgsty/mc:RELEASE.2026-11-12T00-00-00Z",
+    "source": "https://github.com/pgsty/infra-pkg",
+    "compatibility": "Verify registry tag, bucket creation and anonymous access denial."
+  }
+]

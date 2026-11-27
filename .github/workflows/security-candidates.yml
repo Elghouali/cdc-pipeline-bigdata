@@ -1,0 +1,67 @@
+name: Security upgrade candidates
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'security/upgrade-candidates.json'
+      - '.github/workflows/security-candidates.yml'
+      - 'scripts/vulnerability_gate.py'
+permissions:
+  contents: read
+jobs:
+  candidates:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          items = json.loads(Path("security/upgrade-candidates.json").read_text())
+          names = [item["name"] for item in items]
+          assert names and len(set(names)) == len(names)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("matrix=" + json.dumps({"include": items}, separators=(",", ":")) + "\n")
+          PY
+  scan:
+    needs: candidates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.candidates.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull and record immutable image identity
+        env:
+          IMAGE: ${{ matrix.image }}
+          SOURCE: ${{ matrix.source }}
+          COMPATIBILITY: ${{ matrix.compatibility }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          printf 'Candidate: %s\nSource: %s\nRequired compatibility checks: %s\n' "$IMAGE" "$SOURCE" "$COMPATIBILITY" > evidence/candidate.txt
+          docker pull "$IMAGE" 2>&1 | tee evidence/pull.log
+          docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$IMAGE" > evidence/digest.txt
+      - name: Strict vulnerability assessment
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          format: json
+          output: evidence/vulnerabilities.json
+          exit-code: '0'
+      - name: Enforce release severity policy
+        run: python scripts/vulnerability_gate.py --release evidence/vulnerabilities.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-${{ matrix.name }}
+          path: evidence/
+          if-no-files-found: error
